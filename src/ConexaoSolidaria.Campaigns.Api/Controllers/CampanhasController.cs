@@ -85,21 +85,76 @@ public sealed class CampanhasController(CampaignsDbContext db) : ControllerBase
 
     [HttpGet("transparencia")]
     [AllowAnonymous]
-    public async Task<ActionResult<IReadOnlyCollection<TransparenciaCampanhaResponse>>> Transparencia(
-        CancellationToken cancellationToken)
+    [ProducesResponseType<PaginatedResponse<TransparenciaCampanhaResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PaginatedResponse<TransparenciaCampanhaResponse>>> Transparencia(
+        CancellationToken cancellationToken,
+        [FromQuery] TransparenciaCampanhasQuery request)
     {
+        var validationErrors = request.Validate();
+        if (validationErrors.Count > 0)
+        {
+            return BadRequest(new ValidationProblemDetails(validationErrors));
+        }
+
         var now = DateTimeOffset.UtcNow;
-        var campaigns = await db.Campaigns
+        var query = db.Campaigns
             .AsNoTracking()
-            .Where(campaign => campaign.Status == CampaignStatus.Ativa && campaign.DataFim >= now)
+            .Where(campaign => campaign.Status == CampaignStatus.Ativa && campaign.DataFim >= now);
+
+        if (!string.IsNullOrWhiteSpace(request.Titulo))
+        {
+            var titleFilter = $"%{request.Titulo.Trim()}%";
+            query = query.Where(campaign => EF.Functions.ILike(campaign.Titulo, titleFilter));
+        }
+
+        if (request.MetaMinima is not null)
+        {
+            query = query.Where(campaign => campaign.MetaFinanceira >= request.MetaMinima);
+        }
+
+        if (request.MetaMaxima is not null)
+        {
+            query = query.Where(campaign => campaign.MetaFinanceira <= request.MetaMaxima);
+        }
+
+        if (request.ValorArrecadadoMinimo is not null)
+        {
+            query = query.Where(campaign => campaign.ValorTotalArrecadado >= request.ValorArrecadadoMinimo);
+        }
+
+        if (request.ValorArrecadadoMaximo is not null)
+        {
+            query = query.Where(campaign => campaign.ValorTotalArrecadado <= request.ValorArrecadadoMaximo);
+        }
+
+        if (request.DataFimInicial is not null)
+        {
+            query = query.Where(campaign => campaign.DataFim >= request.DataFimInicial.Value.ToUniversalTime());
+        }
+
+        if (request.DataFimFinal is not null)
+        {
+            query = query.Where(campaign => campaign.DataFim <= request.DataFimFinal.Value.ToUniversalTime());
+        }
+
+        var totalItems = await query.CountAsync(cancellationToken);
+
+        var campaigns = await query
             .OrderBy(campaign => campaign.DataFim)
+            .ThenBy(campaign => campaign.Titulo)
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
             .Select(campaign => new TransparenciaCampanhaResponse(
                 campaign.Titulo,
                 campaign.MetaFinanceira,
                 campaign.ValorTotalArrecadado))
             .ToListAsync(cancellationToken);
 
-        return Ok(campaigns);
+        return Ok(PaginatedResponse<TransparenciaCampanhaResponse>.Create(
+            campaigns,
+            request.Page,
+            request.PageSize,
+            totalItems));
     }
 
     private static CampanhaResponse ToResponse(Campaign campaign)

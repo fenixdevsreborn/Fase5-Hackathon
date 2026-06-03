@@ -285,7 +285,7 @@ Payload:
 Depois consulte:
 
 ```text
-GET /api/campanhas/transparencia
+GET /api/campanhas/transparencia?page=1&pageSize=10&titulo=Natal
 ```
 
 O valor arrecadado deve ser atualizado pelo `Donations Worker`.

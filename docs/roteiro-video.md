@@ -464,12 +464,12 @@ Mostrar: Campaigns Swagger.
 Endpoint:
 
 ```text
-GET /api/campanhas/transparencia
+GET /api/campanhas/transparencia?page=1&pageSize=10&titulo=Natal
 ```
 
 Fala sugerida:
 
-> Por fim, consultamos o endpoint publico de transparencia. Ele retorna somente campanhas ativas e mostra titulo, meta financeira e valor total arrecadado. O valor atualizado confirma que o processamento foi feito pelo worker, apos o consumo da mensagem.
+> Por fim, consultamos o endpoint publico de transparencia com paginacao e filtros dinamicos. Ele retorna somente campanhas ativas e permite filtrar por titulo, faixa de meta financeira, faixa de valor arrecadado e periodo de data final. A resposta tambem traz os metadados de pagina, tamanho da pagina, total de itens e total de paginas. O valor atualizado confirma que o processamento foi feito pelo worker, apos o consumo da mensagem.
 
 Requisitos comprovados:
 

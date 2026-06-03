@@ -49,7 +49,7 @@ Usuario gestor criado no seed:
 5. Criar doador em `POST /api/auth/cadastro-doador`.
 6. Usar o token do doador para chamar `POST /api/doacoes`.
 7. Abrir RabbitMQ e observar a fila `doacoes-recebidas`.
-8. Consultar `GET /api/campanhas/transparencia` e confirmar o valor arrecadado.
+8. Consultar `GET /api/campanhas/transparencia?page=1&pageSize=10&titulo=Natal` e confirmar o valor arrecadado.
 9. Abrir o dashboard do Grafana e verificar requisicoes HTTP/doacoes processadas.
 
 ## Executar testes

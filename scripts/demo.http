@@ -46,4 +46,7 @@ Authorization: Bearer {{doadorToken}}
 }
 
 ### Painel publico de transparencia
-GET {{campaignsUrl}}/api/campanhas/transparencia
+GET {{campaignsUrl}}/api/campanhas/transparencia?page=1&pageSize=10
+
+### Painel publico de transparencia com filtros dinamicos
+GET {{campaignsUrl}}/api/campanhas/transparencia?page=1&pageSize=10&titulo=Natal&metaMinima=1000&metaMaxima=20000&valorArrecadadoMinimo=0
