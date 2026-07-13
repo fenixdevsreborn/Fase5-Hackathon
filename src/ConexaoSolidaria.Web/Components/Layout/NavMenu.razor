@@ -1,0 +1,40 @@
+<MudNavMenu Rounded="true" Margin="Margin.Dense" Color="Color.Primary" Class="pa-2">
+    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">
+        Inicio
+    </MudNavLink>
+    <MudNavLink Href="/campanhas" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Campaign">
+        Campanhas
+    </MudNavLink>
+    <MudNavLink Href="/transparencia" Icon="@Icons.Material.Filled.QueryStats">
+        Transparencia
+    </MudNavLink>
+
+    <AuthorizeView Roles="Doador">
+        <MudDivider Class="my-2" />
+        <MudNavGroup Title="Doador" Icon="@Icons.Material.Filled.Favorite" Expanded="true">
+            <MudNavLink Href="/doador" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">
+                Meu painel
+            </MudNavLink>
+            <MudNavLink Href="/doador/doacoes" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ReceiptLong">
+                Minhas doacoes
+            </MudNavLink>
+        </MudNavGroup>
+    </AuthorizeView>
+
+    <AuthorizeView Roles="GestorONG">
+        <MudDivider Class="my-2" />
+        <MudNavGroup Title="Gestor" Icon="@Icons.Material.Filled.AdminPanelSettings" Expanded="true">
+            <MudNavLink Href="/gestor" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">
+                Painel
+            </MudNavLink>
+            <MudNavLink Href="/gestor/campanhas/nova" Icon="@Icons.Material.Filled.AddCircle">
+                Nova campanha
+            </MudNavLink>
+        </MudNavGroup>
+    </AuthorizeView>
+
+    <MudDivider Class="my-2" />
+    <MudNavLink Href="/status" Icon="@Icons.Material.Filled.MonitorHeart">
+        Status
+    </MudNavLink>
+</MudNavMenu>

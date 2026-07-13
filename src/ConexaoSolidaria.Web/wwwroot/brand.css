@@ -1,0 +1,48 @@
+/* Conexao Solidaria - tokens da identidade visual (complementam o MudTheme). */
+:root {
+    --brand-primary: #0b3b60;
+    --brand-secondary: #0f7594;
+    --brand-impact: #23a36d;
+    --brand-highlight: #f4b942;
+    --surface: #ffffff;
+    --surface-alt: #f4f7fa;
+    --text-primary: #14212b;
+    --text-secondary: #52616d;
+    --danger: #c43838;
+    --radius-md: 14px;
+    --shadow-soft: 0 6px 24px rgba(11, 59, 96, 0.08);
+}
+
+html, body {
+    background-color: var(--surface-alt);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+.cs-footer {
+    background-color: var(--brand-primary);
+    color: #ffffff;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.cs-footer a {
+    color: var(--brand-highlight);
+    text-decoration: none;
+}
+
+.cs-footer a:hover {
+    text-decoration: underline;
+}
+
+/* Acessibilidade: respeitar prefers-reduced-motion. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+    }
+}

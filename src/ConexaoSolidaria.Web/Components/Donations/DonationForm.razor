@@ -1,0 +1,132 @@
+@using System.Globalization
+@inject ApiClient Api
+@inject ISnackbar Snackbar
+
+@* Formulario de doacao. Envia POST /api/doacoes (202) e devolve o DoacaoId
+   ao componente pai via OnDonationAccepted para acompanhamento assincrono. *@
+
+<MudForm @ref="_form" Class="cs-donation-form">
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-1">Valores rapidos</MudText>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        @foreach (var valor in ValoresRapidos)
+        {
+            <MudChip T="decimal"
+                     Value="valor"
+                     Variant="@(_valor == valor ? Variant.Filled : Variant.Outlined)"
+                     Color="Color.Primary"
+                     Size="Size.Medium"
+                     Disabled="_enviando"
+                     OnClick="@(() => DefinirValor(valor))">
+                @FormatMoeda(valor)
+            </MudChip>
+        }
+    </div>
+
+    <MudNumericField T="decimal"
+                     @bind-Value="_valor"
+                     Label="Valor da doacao"
+                     Variant="Variant.Outlined"
+                     Adornment="Adornment.Start"
+                     AdornmentText="R$"
+                     Min="0.01m"
+                     Step="10m"
+                     HideSpinButtons="false"
+                     Culture="@Br"
+                     Format="N2"
+                     Required="true"
+                     RequiredError="Informe um valor."
+                     Validation="@(new Func<decimal, string?>(ValidarValor))"
+                     Disabled="_enviando" />
+
+    <div class="d-flex align-center gap-2 mt-3">
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.VolunteerActivism"
+                   OnClick="ConfirmarAsync"
+                   Disabled="_enviando">
+            @if (_enviando)
+            {
+                <MudProgressCircular Class="mr-2" Size="Size.Small" Indeterminate="true" />
+                <span>Enviando...</span>
+            }
+            else
+            {
+                <span>Confirmar doacao</span>
+            }
+        </MudButton>
+        @if (OnCancel.HasDelegate)
+        {
+            <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="OnCancel" Disabled="_enviando">
+                Cancelar
+            </MudButton>
+        }
+    </div>
+
+    @if (_erro is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3" Dense="true" Variant="Variant.Filled">
+            @_erro
+        </MudAlert>
+    }
+</MudForm>
+
+@code {
+    private static readonly CultureInfo Br = new("pt-BR");
+
+    [Parameter, EditorRequired]
+    public Guid CampanhaId { get; set; }
+
+    /// <summary>Disparado com o DoacaoId quando a doacao e aceita (202).</summary>
+    [Parameter]
+    public EventCallback<Guid> OnDonationAccepted { get; set; }
+
+    /// <summary>Opcional: permite ao pai exibir um botao "Cancelar".</summary>
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private static readonly decimal[] ValoresRapidos = { 10m, 25m, 50m, 100m };
+
+    private MudForm _form = default!;
+    private decimal _valor = 50m;
+    private bool _enviando;
+    private string? _erro;
+
+    private static string FormatMoeda(decimal valor) => valor.ToString("C0", Br);
+
+    private void DefinirValor(decimal valor)
+    {
+        _valor = valor;
+        _erro = null;
+    }
+
+    private static string? ValidarValor(decimal valor) =>
+        valor <= 0 ? "O valor deve ser maior que zero." : null;
+
+    private async Task ConfirmarAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        _erro = null;
+        _enviando = true;
+        try
+        {
+            var aceita = await Api.DoarAsync(CampanhaId, _valor);
+            if (aceita is null)
+            {
+                _erro = "Nao foi possivel registrar a doacao. Tente novamente.";
+                return;
+            }
+
+            Snackbar.Add("Doacao recebida! Acompanhe o processamento.", Severity.Success);
+            await OnDonationAccepted.InvokeAsync(aceita.DoacaoId);
+        }
+        finally
+        {
+            _enviando = false;
+        }
+    }
+}

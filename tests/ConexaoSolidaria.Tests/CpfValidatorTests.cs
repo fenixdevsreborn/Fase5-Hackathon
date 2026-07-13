@@ -1,4 +1,4 @@
-using ConexaoSolidaria.Shared.Validation;
+using ConexaoSolidaria.Contracts.Validation;
 
 namespace ConexaoSolidaria.Tests;
 

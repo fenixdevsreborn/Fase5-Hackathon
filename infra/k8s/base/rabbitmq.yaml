@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  labels:
+    app: rabbitmq
+spec:
+  # ClusterIP #K8S-004: AMQP e a UI de management ficam internos.
+  # A UI de management (15672) e acessada na demo via kubectl port-forward.
+  # Tambem serve como governing service do StatefulSet.
+  type: ClusterIP
+  selector:
+    app: rabbitmq
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: amqp
+    - name: management
+      port: 15672
+      targetPort: management
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+  labels:
+    app: rabbitmq
+    app.kubernetes.io/component: broker
+spec:
+  # Persistencia #K8S-003: StatefulSet + volumeClaimTemplates (fila/mnesia sobrevive a restart).
+  serviceName: rabbitmq
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      # rabbitmq roda como uid 999; fsGroup garante o PVC gravavel.
+      securityContext:
+        fsGroup: 999
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:4-management
+          ports:
+            - name: amqp
+              containerPort: 5672
+            - name: management
+              containerPort: 15672
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: rabbitmq-user
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: rabbitmq-password
+          volumeMounts:
+            - name: rabbitmq-data
+              mountPath: /var/lib/rabbitmq
+          readinessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "status"]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+  volumeClaimTemplates:
+    - metadata:
+        name: rabbitmq-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi

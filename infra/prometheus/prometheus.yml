@@ -1,7 +1,14 @@
 global:
+  # Intervalo curto para a demo: metricas quase em tempo real nos dashboards.
   scrape_interval: 5s
+  evaluation_interval: 5s
 
 scrape_configs:
+  # ---------------------------------------------------------------------------
+  # Servicos .NET com prometheus-net (UseHttpMetrics + MapMetrics em /metrics).
+  # Expoem metricas HTTP (http_request_duration_seconds*, http_requests_received_total,
+  # http_requests_in_progress) e as metricas custom de negocio/mensageria (conexao_*).
+  # ---------------------------------------------------------------------------
   - job_name: identity-api
     metrics_path: /metrics
     static_configs:
@@ -16,3 +23,47 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ["donations-worker:8080"]
+
+  # ---------------------------------------------------------------------------
+  # Gateway (YARP). E o unico ponto de entrada das APIs, entao e o alvo natural
+  # para RPS/latencia agregados de borda. O Gateway expoe /metrics via
+  # prometheus-net (app.UseHttpMetrics() + app.MapMetrics()), como as APIs.
+  - job_name: gateway
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["gateway:8080"]
+
+  # ---------------------------------------------------------------------------
+  # Web (Blazor). Hoje o ConexaoSolidaria.Web NAO expoe /metrics (so /health e
+  # /alive via MapDefaultEndpoints, sem prometheus-net). Deixado comentado ate
+  # que o /metrics seja habilitado no projeto Web (mesma mudanca do Gateway).
+  # ---------------------------------------------------------------------------
+  # - job_name: web
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets: ["web:8080"]
+
+  # ---------------------------------------------------------------------------
+  # RabbitMQ (best-effort). Expoe metricas nativas em :15692 (rabbitmq_queue_messages,
+  # rabbitmq_queue_messages_ready, rabbitmq_connections, etc.).
+  # REQUER o plugin `rabbitmq_prometheus` habilitado no broker. No docker-compose o
+  # servico usa a imagem rabbitmq:4-management; habilite o plugin com, por exemplo:
+  #   rabbitmq-plugins enable rabbitmq_prometheus
+  # (ou via RABBITMQ_ENABLED_PLUGINS_FILE / enabled_plugins). A porta 15692 e
+  # alcancavel na rede interna do compose pelo container do Prometheus (nao precisa
+  # ser publicada no host).
+  - job_name: rabbitmq
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["rabbitmq:15692"]
+
+  # ---------------------------------------------------------------------------
+  # OTel Collector: as metricas recebidas via OTLP dos servicos sao reexpostas
+  # pelo exporter `prometheus` do collector em :8889/metrics. Scrapeado aqui como
+  # caminho alternativo/complementar ao scrape direto do /metrics de cada servico
+  # (prometheus-net). Habilitado quando o collector esta no ar (docker-compose).
+  # ---------------------------------------------------------------------------
+  - job_name: otel-collector
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["otel-collector:8889"]

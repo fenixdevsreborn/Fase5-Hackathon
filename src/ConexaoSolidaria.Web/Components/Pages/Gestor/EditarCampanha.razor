@@ -1,0 +1,114 @@
+@page "/gestor/campanhas/{Id}/editar"
+@using ConexaoSolidaria.Web.Components.Campaigns
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>Editar campanha</PageTitle>
+
+<AuthorizeView Roles="GestorONG">
+    <Authorized>
+        <MudText Typo="Typo.h4" GutterBottom="true">Editar campanha</MudText>
+
+        @if (_carregando)
+        {
+            <div class="d-flex align-center justify-center pa-8">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+            </div>
+        }
+        else if (_naoEncontrada)
+        {
+            <MudAlert Severity="Severity.Warning" Class="my-4">
+                Campanha não encontrada.
+                <MudLink Href="/gestor">Voltar ao painel</MudLink>
+            </MudAlert>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                Atualize os dados da campanha. As regras finais são validadas pelo servidor.
+            </MudText>
+
+            <MudPaper Class="pa-6" Elevation="1" Style="max-width:820px">
+                <CampaignForm Model="_model"
+                              SubmitLabel="Salvar alterações"
+                              OnSubmit="SalvarAsync"
+                              ErrorMessage="@_erro" />
+            </MudPaper>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert Severity="Severity.Warning" Class="my-4">
+            Área restrita a gestores de ONG.
+            <MudLink Href="/entrar">Entrar</MudLink>
+        </MudAlert>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    [Parameter] public string? Id { get; set; }
+
+    private bool _carregando = true;
+    private bool _naoEncontrada;
+    private Guid _campanhaId;
+    private SalvarCampanha? _model;
+    private string? _erro;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Guid.TryParse(Id, out _campanhaId))
+        {
+            _naoEncontrada = true;
+            _carregando = false;
+            return;
+        }
+
+        try
+        {
+            var campanha = await Api.ObterCampanhaAsync(_campanhaId);
+            if (campanha is null)
+            {
+                _naoEncontrada = true;
+            }
+            else
+            {
+                _model = new SalvarCampanha(
+                    Titulo: campanha.Titulo,
+                    Descricao: campanha.Descricao,
+                    DataInicio: campanha.DataInicio,
+                    DataFim: campanha.DataFim,
+                    MetaFinanceira: campanha.MetaFinanceira,
+                    Status: campanha.Status);
+            }
+        }
+        catch
+        {
+            _naoEncontrada = true;
+        }
+        finally
+        {
+            _carregando = false;
+        }
+    }
+
+    private async Task SalvarAsync(SalvarCampanha dto)
+    {
+        _erro = null;
+        try
+        {
+            var atualizada = await Api.AtualizarCampanhaAsync(_campanhaId, dto);
+            if (atualizada is null)
+            {
+                _erro = "Não foi possível salvar (verifique meta>0 e datas).";
+                return;
+            }
+
+            Snackbar.Add("Campanha atualizada com sucesso.", Severity.Success);
+            Nav.NavigateTo("/gestor");
+        }
+        catch
+        {
+            _erro = "Ocorreu um erro inesperado ao salvar a campanha. Tente novamente.";
+        }
+    }
+}

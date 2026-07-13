@@ -1,0 +1,228 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 5s
+    scrape_configs:
+      # As APIs sao expostas na porta 80 do Service (-> container 8080).
+      - job_name: identity-api
+        metrics_path: /metrics
+        static_configs:
+          - targets: ["identity-api:80"]
+      - job_name: campaigns-api
+        metrics_path: /metrics
+        static_configs:
+          - targets: ["campaigns-api:80"]
+      - job_name: donations-worker
+        metrics_path: /metrics
+        static_configs:
+          - targets: ["donations-worker:8080"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+    app.kubernetes.io/component: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.55.1
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+          ports:
+            - name: http
+              containerPort: 9090
+          volumeMounts:
+            - name: prometheus-config
+              mountPath: /etc/prometheus/prometheus.yml
+              subPath: prometheus.yml
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: prometheus-config
+          configMap:
+            name: prometheus-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+spec:
+  # ClusterIP #K8S-004: acessado pelo Grafana no cluster; na demo via port-forward.
+  type: ClusterIP
+  selector:
+    app: prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: http
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-provisioning
+data:
+  datasource.yml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        uid: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+        editable: true
+  dashboards.yml: |
+    apiVersion: 1
+    providers:
+      - name: Conexao Solidaria
+        orgId: 1
+        folder: Conexao Solidaria
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards
+  dashboard.json: |
+    {
+      "uid": "conexao-solidaria-k8s",
+      "title": "Conexao Solidaria - Kubernetes",
+      "schemaVersion": 39,
+      "refresh": "5s",
+      "time": { "from": "now-15m", "to": "now" },
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Requisicoes HTTP por segundo",
+          "gridPos": { "h": 8, "w": 16, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(http_requests_received_total[1m])) by (job)",
+              "legendFormat": "{{job}}"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Doacoes processadas",
+          "gridPos": { "h": 8, "w": 4, "x": 16, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(conexao_donations_processed_total)"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Rejeitadas por campanha",
+          "gridPos": { "h": 8, "w": 4, "x": 20, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "Prometheus" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(conexao_donations_rejected_total)"
+            }
+          ]
+        }
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  labels:
+    app: grafana
+    app.kubernetes.io/component: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:11.4.0
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: grafana-admin-user
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: grafana-admin-password
+          volumeMounts:
+            - name: grafana-provisioning
+              mountPath: /etc/grafana/provisioning/datasources/datasource.yml
+              subPath: datasource.yml
+            - name: grafana-provisioning
+              mountPath: /etc/grafana/provisioning/dashboards/dashboards.yml
+              subPath: dashboards.yml
+            - name: grafana-provisioning
+              mountPath: /var/lib/grafana/dashboards/dashboard.json
+              subPath: dashboard.json
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: grafana-provisioning
+          configMap:
+            name: grafana-provisioning
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  labels:
+    app: grafana
+spec:
+  # ClusterIP #K8S-004: dashboard acessado na demo via kubectl port-forward.
+  type: ClusterIP
+  selector:
+    app: grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http

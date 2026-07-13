@@ -1,0 +1,119 @@
+@page "/transparencia"
+@using System.Globalization
+@using ConexaoSolidaria.Web.Components.Common
+@using ConexaoSolidaria.Web.Components.Campaigns
+@inject ApiClient Api
+
+<PageTitle>Transparencia - Conexao Solidaria</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true" Style="font-weight:700;">Transparencia</MudText>
+<MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+    Prestacao de contas publica das campanhas ativas: meta, valor arrecadado e progresso.
+</MudText>
+
+<MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true" Class="mb-6">
+    Os dados de negocio (metas e valores arrecadados) vem diretamente da API da plataforma.
+</MudAlert>
+
+@if (_loading)
+{
+    <MudPaper Elevation="1" Class="pa-6 mb-6" Style="border-radius:var(--radius-md);">
+        <MudSkeleton SkeletonType="SkeletonType.Text" Width="40%" Height="48px" />
+        <MudSkeleton SkeletonType="SkeletonType.Text" Width="25%" />
+    </MudPaper>
+    <LoadingSkeleton Count="3" />
+}
+else if (_error)
+{
+    <EmptyState Icon="@Icons.Material.Filled.CloudOff"
+                Title="Nao foi possivel carregar os dados"
+                Description="Ocorreu um erro ao consultar a API. Tente novamente em instantes.">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Refresh" OnClick="Recarregar">
+            Tentar novamente
+        </MudButton>
+    </EmptyState>
+}
+else if (_itens.Count == 0)
+{
+    <EmptyState Icon="@Icons.Material.Filled.QueryStats"
+                Title="Sem campanhas ativas para exibir"
+                Description="Quando houver campanhas ativas, o resumo de arrecadacao aparecera aqui." />
+}
+else
+{
+    @* ---------------- Resumo geral ---------------- *@
+    <MudPaper Elevation="2" Class="pa-6 mb-6"
+              Style="border-radius:var(--radius-md);background:linear-gradient(135deg,#0b3b60 0%,#0f7594 100%);color:#fff;">
+        <MudGrid>
+            <MudItem xs="12" sm="4">
+                <MudText Typo="Typo.overline" Style="color:rgba(255,255,255,.75);">Total arrecadado</MudText>
+                <MudText Typo="Typo.h4" Style="color:#fff;font-weight:800;">
+                    <AnimatedCounter Value="_totalArrecadado" Prefix="R$ " Format="N2" />
+                </MudText>
+            </MudItem>
+            <MudItem xs="6" sm="4">
+                <MudText Typo="Typo.overline" Style="color:rgba(255,255,255,.75);">Meta somada</MudText>
+                <MudText Typo="Typo.h5" Style="color:#fff;font-weight:700;">@Money(_totalMeta)</MudText>
+            </MudItem>
+            <MudItem xs="6" sm="4">
+                <MudText Typo="Typo.overline" Style="color:rgba(255,255,255,.75);">Campanhas ativas</MudText>
+                <MudText Typo="Typo.h5" Style="color:#fff;font-weight:700;">@_itens.Count</MudText>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @* ---------------- Lista detalhada ---------------- *@
+    <MudGrid>
+        @foreach (var item in _itens)
+        {
+            <MudItem @key="item.Titulo" xs="12">
+                <MudPaper Elevation="1" Class="pa-4" Style="border-radius:var(--radius-md);">
+                    <MudText Typo="Typo.h6" Style="font-weight:700;" Class="mb-2">@item.Titulo</MudText>
+                    <CampaignProgress Meta="item.MetaFinanceira" Arrecadado="item.ValorTotalArrecadado" />
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private static readonly CultureInfo Ptbr = CultureInfo.GetCultureInfo("pt-BR");
+
+    private bool _loading = true;
+    private bool _error;
+    private decimal _totalArrecadado;
+    private decimal _totalMeta;
+    private IReadOnlyList<TransparenciaDto> _itens = Array.Empty<TransparenciaDto>();
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = false;
+        StateHasChanged();
+
+        try
+        {
+            var dados = await Api.TransparenciaAsync();
+            _itens = dados;
+            _totalArrecadado = dados.Sum(d => d.ValorTotalArrecadado);
+            _totalMeta = dados.Sum(d => d.MetaFinanceira);
+        }
+        catch
+        {
+            _error = true;
+            _itens = Array.Empty<TransparenciaDto>();
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private Task Recarregar() => LoadAsync();
+
+    private static string Money(decimal value) => value.ToString("C2", Ptbr);
+}

@@ -1,5 +1,8 @@
 @identityUrl = http://localhost:5001
 @campaignsUrl = http://localhost:5002
+# Defina a senha do gestor localmente (mesmo valor de SEED_MANAGER_PASSWORD no seu .env).
+# NAO commite a senha real. Veja .env.example / SECURITY.md.
+@gestorSenha = <senha-do-gestor>
 
 ### Login gestor
 POST {{identityUrl}}/api/auth/login
@@ -7,7 +10,7 @@ Content-Type: application/json
 
 {
   "email": "gestor@conexaosolidaria.local",
-  "senha": "Gestor@123456"
+  "senha": "{{gestorSenha}}"
 }
 
 ### Criar doador

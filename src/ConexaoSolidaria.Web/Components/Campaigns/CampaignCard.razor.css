@@ -1,0 +1,25 @@
+.cs-card-wrap {
+    height: 100%;
+}
+
+.cs-card-wrap ::deep .cs-campaign-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.cs-card-wrap:hover ::deep .cs-campaign-card {
+    box-shadow: 0 12px 32px rgba(11, 59, 96, 0.16);
+    transform: translateY(-4px);
+}
+
+.cs-card-wrap ::deep .cs-campaign-card__content {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.cs-card-wrap ::deep .cs-campaign-card__spacer {
+    flex: 1 1 auto;
+}

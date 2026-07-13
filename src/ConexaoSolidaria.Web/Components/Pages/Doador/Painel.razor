@@ -1,0 +1,107 @@
+@page "/doador"
+@inject NavigationManager Nav
+
+<PageTitle>Meu painel</PageTitle>
+
+<AuthorizeView Roles="Doador">
+    <Authorized>
+        <div class="d-flex align-center mb-1">
+            <MudIcon Icon="@Icons.Material.Filled.VolunteerActivism" Color="Color.Primary" Class="mr-2" />
+            <MudText Typo="Typo.h4">Ola, @(context.User.Identity?.Name ?? "doador")!</MudText>
+        </div>
+        <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-5">
+            Bem-vindo ao seu painel. Aqui voce encontra atalhos para apoiar campanhas e
+            acompanhar o processamento das suas doacoes.
+        </MudText>
+
+        <MudGrid Spacing="4">
+            <MudItem xs="12" md="6">
+                <MudPaper Elevation="0" Class="pa-5 mud-height-full" Style="border:1px solid var(--mud-palette-lines-default);border-radius:16px;">
+                    <MudText Typo="Typo.h6" GutterBottom="true">
+                        <MudIcon Icon="@Icons.Material.Filled.Campaign" Class="mr-1" Size="Size.Small" />
+                        Apoiar uma campanha
+                    </MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                        Explore as campanhas ativas e faca sua doacao em poucos cliques.
+                    </MudText>
+                    <MudButton Href="/campanhas" Variant="Variant.Filled" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Search">
+                        Ver campanhas
+                    </MudButton>
+                    <MudButton Href="/transparencia" Variant="Variant.Text" Color="Color.Primary" Class="ml-2">
+                        Transparencia
+                    </MudButton>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudPaper Elevation="0" Class="pa-5 mud-height-full" Style="border:1px solid var(--mud-palette-lines-default);border-radius:16px;">
+                    <MudText Typo="Typo.h6" GutterBottom="true">
+                        <MudIcon Icon="@Icons.Material.Filled.TrackChanges" Class="mr-1" Size="Size.Small" />
+                        Acompanhar uma doacao
+                    </MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                        Tem o protocolo (ID) de uma doacao? Informe abaixo para acompanhar o status.
+                    </MudText>
+                    <MudTextField T="string" @bind-Value="_protocolo"
+                                  Label="ID da doacao"
+                                  Variant="Variant.Outlined"
+                                  Adornment="Adornment.End"
+                                  AdornmentIcon="@Icons.Material.Filled.ArrowForward"
+                                  OnAdornmentClick="Acompanhar"
+                                  Error="_protocoloInvalido"
+                                  ErrorText="Informe um ID valido."
+                                  Immediate="true" />
+                    <MudButton OnClick="Acompanhar" Variant="Variant.Outlined" Color="Color.Primary" Class="mt-3">
+                        Acompanhar
+                    </MudButton>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudPaper Elevation="0" Class="pa-5 mt-4" Style="background:var(--surface-alt);border-radius:16px;">
+            <MudText Typo="Typo.h6" GutterBottom="true">
+                <MudIcon Icon="@Icons.Material.Filled.Bolt" Class="mr-1" Size="Size.Small" />
+                Como funciona o processamento
+            </MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                As doacoes sao processadas de forma <b>assincrona</b>. Ao confirmar uma doacao,
+                ela e <b>recebida</b> e entra em uma <b>fila</b>. Em seguida e <b>processada</b> e,
+                quando conciliada, passa a <b>Concluida</b> (ou <b>Rejeitada</b>, sem cobranca).
+                Por isso, logo apos doar voce vera uma linha do tempo que se atualiza sozinha —
+                nao feche a pagina ate ver o resultado, ou volte depois usando o ID da doacao.
+            </MudText>
+        </MudPaper>
+    </Authorized>
+    <NotAuthorized>
+        <MudPaper Elevation="0" Class="pa-8 my-4 d-flex flex-column align-center" Style="border:1px dashed var(--mud-palette-lines-default);border-radius:16px;">
+            <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Large" Color="Color.Secondary" />
+            <MudText Typo="Typo.h6" Class="mt-2">Acesso restrito</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                Faca login como doador para acessar seu painel.
+            </MudText>
+            <MudButton Href="/entrar?returnUrl=%2Fdoador" Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Login">
+                Entrar
+            </MudButton>
+        </MudPaper>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private string _protocolo = string.Empty;
+    private bool _protocoloInvalido;
+
+    private void Acompanhar()
+    {
+        if (Guid.TryParse(_protocolo?.Trim(), out var id))
+        {
+            _protocoloInvalido = false;
+            Nav.NavigateTo($"/doador/doacoes/{id}");
+        }
+        else
+        {
+            _protocoloInvalido = true;
+        }
+    }
+}

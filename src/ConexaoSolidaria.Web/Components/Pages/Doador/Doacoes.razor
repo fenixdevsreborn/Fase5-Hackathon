@@ -1,0 +1,155 @@
+@page "/doador/doacoes"
+@using System.Globalization
+@using ConexaoSolidaria.Web.Components.Common
+@inject ApiClient Api
+
+<PageTitle>Minhas doacoes</PageTitle>
+
+<AuthorizeView Roles="Doador">
+    <Authorized>
+        <MudBreadcrumbs Items="_breadcrumbs" Class="px-0" />
+        <div class="d-flex align-center justify-space-between flex-wrap mb-4" style="gap:12px">
+            <div>
+                <MudText Typo="Typo.h4">Minhas doacoes</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Historico das suas doacoes e o status de processamento de cada uma.
+                </MudText>
+            </div>
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Refresh"
+                       OnClick="CarregarAsync"
+                       Disabled="_carregando">
+                Atualizar
+            </MudButton>
+        </div>
+
+        @if (_carregando)
+        {
+            <div class="d-flex align-center justify-center pa-8">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+            </div>
+        }
+        else if (_erro)
+        {
+            <MudAlert Severity="Severity.Error" Class="my-4">
+                Nao foi possivel carregar suas doacoes.
+                <MudButton Variant="Variant.Text" Color="Color.Inherit" OnClick="CarregarAsync">Tentar novamente</MudButton>
+            </MudAlert>
+        }
+        else if (_doacoes.Count == 0)
+        {
+            <EmptyState Icon="@Icons.Material.Filled.VolunteerActivism"
+                        Title="Voce ainda nao fez doacoes"
+                        Description="Explore as campanhas ativas e faca sua primeira doacao.">
+                <MudButton Href="/campanhas" Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Search">
+                    Ver campanhas
+                </MudButton>
+            </EmptyState>
+        }
+        else
+        {
+            <MudPaper Class="pa-2" Elevation="1">
+                <MudTable Items="_doacoes" Hover="true" Breakpoint="Breakpoint.Sm" Class="pa-2">
+                    <HeaderContent>
+                        <MudTh>Campanha</MudTh>
+                        <MudTh Style="text-align:right">Valor</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Data</MudTh>
+                        <MudTh Style="text-align:right">Acoes</MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="row">
+                        <MudTd DataLabel="Campanha">
+                            <MudLink Href="@($"/campanhas/{row.CampanhaId}")">@row.CampanhaTitulo</MudLink>
+                        </MudTd>
+                        <MudTd DataLabel="Valor" Style="text-align:right">@FormatMoeda(row.ValorDoacao)</MudTd>
+                        <MudTd DataLabel="Status">
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                                     Color="@StatusCor(row.Status)">@StatusRotulo(row.Status)</MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Data">@FormatData(row.CriadaEm)</MudTd>
+                        <MudTd DataLabel="Acoes" Style="text-align:right">
+                            <MudButton Variant="Variant.Text"
+                                       Color="Color.Primary"
+                                       Size="Size.Small"
+                                       EndIcon="@Icons.Material.Filled.ArrowForward"
+                                       Href="@($"/doador/doacoes/{row.DoacaoId}")">
+                                Acompanhar
+                            </MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                    <PagerContent>
+                        <MudTablePager />
+                    </PagerContent>
+                </MudTable>
+            </MudPaper>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <MudPaper Elevation="0" Class="pa-8 my-4 d-flex flex-column align-center" Style="border:1px dashed var(--mud-palette-lines-default);border-radius:16px;">
+            <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Large" Color="Color.Secondary" />
+            <MudText Typo="Typo.h6" Class="mt-2">Acesso restrito</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                Faca login como doador para ver suas doacoes.
+            </MudText>
+            <MudButton Href="/entrar?returnUrl=%2Fdoador%2Fdoacoes" Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Login">
+                Entrar
+            </MudButton>
+        </MudPaper>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private static readonly CultureInfo Br = CultureInfo.GetCultureInfo("pt-BR");
+
+    private bool _carregando = true;
+    private bool _erro;
+    private IReadOnlyList<MinhaDoacaoDto> _doacoes = Array.Empty<MinhaDoacaoDto>();
+
+    private readonly List<BreadcrumbItem> _breadcrumbs = new()
+    {
+        new BreadcrumbItem("Meu painel", "/doador"),
+        new BreadcrumbItem("Minhas doacoes", null, disabled: true),
+    };
+
+    protected override async Task OnInitializedAsync() => await CarregarAsync();
+
+    private async Task CarregarAsync()
+    {
+        _carregando = true;
+        _erro = false;
+        try
+        {
+            _doacoes = await Api.MinhasDoacoesAsync();
+        }
+        catch
+        {
+            _erro = true;
+        }
+        finally
+        {
+            _carregando = false;
+        }
+    }
+
+    private static string FormatMoeda(decimal valor) => valor.ToString("C", Br);
+
+    private static string FormatData(DateTimeOffset data) => data.ToLocalTime().ToString("dd/MM/yyyy HH:mm", Br);
+
+    private static Color StatusCor(string status) => status switch
+    {
+        "Pendente" => Color.Warning,
+        "Processada" => Color.Success,
+        "Rejeitada" => Color.Error,
+        "Falha" => Color.Default,
+        _ => Color.Default,
+    };
+
+    private static string StatusRotulo(string status) => status switch
+    {
+        "Processada" => "Processada",
+        _ => status,
+    };
+}

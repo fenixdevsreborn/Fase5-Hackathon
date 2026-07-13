@@ -1,0 +1,166 @@
+@page "/campanhas"
+@using ConexaoSolidaria.Web.Components.Common
+@using ConexaoSolidaria.Web.Components.Campaigns
+@inject ApiClient Api
+
+<PageTitle>Campanhas - Conexao Solidaria</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true" Style="font-weight:700;">Campanhas</MudText>
+<MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-6">
+    Encontre uma causa para apoiar e acompanhe a arrecadacao de cada campanha.
+</MudText>
+
+@* ---------------- Busca ---------------- *@
+<MudPaper Elevation="1" Class="pa-4 mb-6" Style="border-radius:var(--radius-md);">
+    <div class="d-flex flex-wrap align-center" style="gap:12px;">
+        <MudTextField T="string"
+                      @bind-Value="_query"
+                      Immediate="true"
+                      DebounceInterval="400"
+                      OnDebounceIntervalElapsed="OnDebouncedSearch"
+                      Placeholder="Buscar por titulo ou descricao..."
+                      Variant="Variant.Outlined"
+                      Margin="Margin.Dense"
+                      Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search"
+                      Clearable="true"
+                      OnClearButtonClick="OnClear"
+                      Class="flex-grow-1"
+                      Style="min-width:220px;" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Search"
+                   OnClick="OnSearchClick">
+            Buscar
+        </MudButton>
+    </div>
+</MudPaper>
+
+@* ---------------- Resultados ---------------- *@
+@if (_loading)
+{
+    <LoadingSkeleton Count="6" />
+}
+else if (_error)
+{
+    <EmptyState Icon="@Icons.Material.Filled.CloudOff"
+                Title="Nao foi possivel carregar as campanhas"
+                Description="Ocorreu um erro ao falar com o servidor. Tente novamente em instantes.">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Refresh" OnClick="Recarregar">
+            Tentar novamente
+        </MudButton>
+    </EmptyState>
+}
+else if (_campanhas.Count == 0)
+{
+    <EmptyState Icon="@Icons.Material.Filled.SearchOff"
+                Title="Nenhuma campanha encontrada"
+                Description="@(string.IsNullOrWhiteSpace(_query)
+                    ? "Ainda nao ha campanhas cadastradas."
+                    : $"Nao encontramos resultados para \"{_query}\". Tente outros termos.")" />
+}
+else
+{
+    <div class="d-flex justify-space-between align-center mb-3">
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            @_total campanha(s) encontrada(s)
+        </MudText>
+    </div>
+
+    <MudGrid>
+        @foreach (var campanha in _campanhas)
+        {
+            <MudItem @key="campanha.Id" xs="12" sm="6" md="4">
+                <CampaignCard Campanha="campanha" />
+            </MudItem>
+        }
+    </MudGrid>
+
+    @if (_totalPages > 1)
+    {
+        <div class="d-flex justify-center mt-8">
+            <MudPagination Color="Color.Primary"
+                           Count="_totalPages"
+                           Selected="_page"
+                           SelectedChanged="OnPageChanged"
+                           Rectangular="true"
+                           ShowFirstButton="true"
+                           ShowLastButton="true" />
+        </div>
+    }
+}
+
+@code {
+    private const int PageSize = 9;
+
+    private string _query = string.Empty;
+    private int _page = 1;
+    private int _total;
+    private int _totalPages;
+    private bool _loading = true;
+    private bool _error;
+    private IReadOnlyList<CampanhaDto> _campanhas = Array.Empty<CampanhaDto>();
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = false;
+        StateHasChanged();
+
+        try
+        {
+            var result = await Api.BuscarCampanhasAsync(_query, _page, PageSize);
+            _campanhas = result.Items;
+            _total = result.Total;
+            _totalPages = result.TotalPages;
+
+            // Ajuste defensivo caso a pagina atual fique fora do intervalo.
+            if (_page > _totalPages && _totalPages > 0)
+            {
+                _page = _totalPages;
+                await LoadAsync();
+                return;
+            }
+        }
+        catch
+        {
+            _error = true;
+            _campanhas = Array.Empty<CampanhaDto>();
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private Task OnDebouncedSearch(string value)
+    {
+        _query = value;
+        _page = 1;
+        return LoadAsync();
+    }
+
+    private Task OnSearchClick()
+    {
+        _page = 1;
+        return LoadAsync();
+    }
+
+    private Task OnClear()
+    {
+        _query = string.Empty;
+        _page = 1;
+        return LoadAsync();
+    }
+
+    private Task OnPageChanged(int page)
+    {
+        _page = page;
+        return LoadAsync();
+    }
+
+    private Task Recarregar() => LoadAsync();
+}

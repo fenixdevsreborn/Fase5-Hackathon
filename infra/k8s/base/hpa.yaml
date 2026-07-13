@@ -1,0 +1,64 @@
+# HorizontalPodAutoscaler #K8S-010: escala por CPU o Gateway e as duas APIs.
+# Requer metrics-server instalado no cluster. NAO ha HPA para Postgres/RabbitMQ/ES
+# (stateful) nem para o Web (Blazor Server exige sticky sessions + keys compartilhadas).
+#
+# TODO (#K8S-010): o Donations Worker deveria escalar pelo tamanho da fila do
+# RabbitMQ, o que exige KEDA (ScaledObject com trigger rabbitmq). Fica como TODO
+# ate o KEDA estar disponivel no cluster.
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gateway
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gateway
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: identity-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: identity-api
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: campaigns-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: campaigns-api
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

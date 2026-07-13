@@ -1,0 +1,177 @@
+@page "/cadastrar"
+@using System.ComponentModel.DataAnnotations
+@using System.Text.RegularExpressions
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+<PageTitle>Cadastrar</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="pa-0">
+    <MudPaper Elevation="0" Class="pa-6 mt-4" Style="border:1px solid var(--mud-palette-lines-default);border-radius:16px;">
+        <div class="d-flex align-center mb-1">
+            <MudIcon Icon="@Icons.Material.Filled.PersonAdd" Color="Color.Primary" Class="mr-2" />
+            <MudText Typo="Typo.h5">Criar conta de doador</MudText>
+        </div>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            Cadastre-se para apoiar campanhas e acompanhar suas doacoes.
+        </MudText>
+
+        <MudForm @ref="_form">
+            <MudTextField T="string"
+                          @bind-Value="_nome"
+                          Label="Nome completo"
+                          Variant="Variant.Outlined"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Badge"
+                          Required="true"
+                          RequiredError="Informe seu nome."
+                          Validation="@(new Func<string, string?>(ValidarNome))"
+                          Class="mb-3" />
+
+            <MudTextField T="string"
+                          @bind-Value="_email"
+                          Label="E-mail"
+                          Variant="Variant.Outlined"
+                          InputType="InputType.Email"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Email"
+                          Required="true"
+                          RequiredError="Informe seu e-mail."
+                          Validation="@(new Func<string, string?>(ValidarEmail))"
+                          Class="mb-3" />
+
+            <MudTextField T="string"
+                          @bind-Value="_cpf"
+                          Label="CPF (somente numeros)"
+                          Variant="Variant.Outlined"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Fingerprint"
+                          MaxLength="11"
+                          HelperText="11 digitos, sem pontos ou traco."
+                          Required="true"
+                          RequiredError="Informe seu CPF."
+                          Validation="@(new Func<string, string?>(ValidarCpf))"
+                          Class="mb-3" />
+
+            <MudTextField T="string"
+                          @bind-Value="_senha"
+                          Label="Senha"
+                          Variant="Variant.Outlined"
+                          InputType="@(_mostrarSenha ? InputType.Text : InputType.Password)"
+                          Adornment="Adornment.End"
+                          AdornmentIcon="@(_mostrarSenha ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                          OnAdornmentClick="@(() => _mostrarSenha = !_mostrarSenha)"
+                          AdornmentAriaLabel="Mostrar ou ocultar senha"
+                          HelperText="Minimo de 8 caracteres."
+                          Required="true"
+                          RequiredError="Informe uma senha."
+                          Validation="@(new Func<string, string?>(ValidarSenha))"
+                          Class="mb-3" />
+
+            <MudTextField T="string"
+                          @bind-Value="_confirmarSenha"
+                          Label="Confirmar senha"
+                          Variant="Variant.Outlined"
+                          InputType="@(_mostrarSenha ? InputType.Text : InputType.Password)"
+                          Required="true"
+                          RequiredError="Confirme sua senha."
+                          Validation="@(new Func<string, string?>(ValidarConfirmacao))" />
+
+            @if (_erro)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Dense="true" Class="mt-3">
+                    Nao foi possivel cadastrar. Verifique os dados — o e-mail ou CPF pode ja estar em uso.
+                </MudAlert>
+            }
+
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       FullWidth="true"
+                       Class="mt-4"
+                       Size="Size.Large"
+                       OnClick="CadastrarAsync"
+                       Disabled="_enviando">
+                @if (_enviando)
+                {
+                    <MudProgressCircular Class="mr-2" Size="Size.Small" Indeterminate="true" />
+                    <span>Cadastrando...</span>
+                }
+                else
+                {
+                    <span>Cadastrar</span>
+                }
+            </MudButton>
+        </MudForm>
+
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.body2" Align="Align.Center" Color="Color.Secondary">
+            Ja tem conta?
+            <MudLink Href="@EntrarHref">Entrar</MudLink>
+        </MudText>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    private MudForm _form = default!;
+    private string _nome = string.Empty;
+    private string _email = string.Empty;
+    private string _cpf = string.Empty;
+    private string _senha = string.Empty;
+    private string _confirmarSenha = string.Empty;
+    private bool _mostrarSenha;
+    private bool _enviando;
+    private bool _erro;
+
+    private string EntrarHref =>
+        string.IsNullOrWhiteSpace(ReturnUrl) ? "/entrar" : $"/entrar?returnUrl={Uri.EscapeDataString(ReturnUrl)}";
+
+    private static string? ValidarNome(string nome) =>
+        !string.IsNullOrWhiteSpace(nome) && nome.Trim().Length >= 3 ? null : "Informe seu nome completo.";
+
+    private static string? ValidarEmail(string email) =>
+        new EmailAddressAttribute().IsValid(email) ? null : "E-mail invalido.";
+
+    private static string? ValidarCpf(string cpf) =>
+        Regex.IsMatch(cpf ?? string.Empty, "^[0-9]{11}$") ? null : "O CPF deve conter exatamente 11 digitos.";
+
+    private static string? ValidarSenha(string senha) =>
+        (senha?.Length ?? 0) >= 8 ? null : "A senha deve ter ao menos 8 caracteres.";
+
+    private string? ValidarConfirmacao(string confirmacao) =>
+        confirmacao == _senha ? null : "As senhas nao conferem.";
+
+    private async Task CadastrarAsync()
+    {
+        _erro = false;
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        _enviando = true;
+        try
+        {
+            var dto = new CadastroDoador(_nome.Trim(), _email.Trim(), _cpf.Trim(), _senha);
+            var result = await Auth.CadastrarDoadorAsync(dto);
+            if (result is null)
+            {
+                _erro = true;
+                return;
+            }
+
+            // Auto-login ja realizado pelo AuthService.
+            var destino = !string.IsNullOrWhiteSpace(ReturnUrl) && ReturnUrl.StartsWith('/')
+                ? ReturnUrl
+                : "/doador";
+            Nav.NavigateTo(destino, forceLoad: false);
+        }
+        finally
+        {
+            _enviando = false;
+        }
+    }
+}

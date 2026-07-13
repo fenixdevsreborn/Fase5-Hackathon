@@ -1,0 +1,54 @@
+# PodDisruptionBudget #K8S-011: protege os servicos stateless durante disrupcoes
+# voluntarias (drain de node, upgrade). Servicos que escalam via HPA usam
+# minAvailable: 1; os de replica unica usam maxUnavailable: 1 para nao bloquear
+# drains do node (ainda declaram intencao de disponibilidade).
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gateway
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: gateway
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: identity-api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: identity-api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: campaigns-api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: campaigns-api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: web
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: donations-worker
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: donations-worker

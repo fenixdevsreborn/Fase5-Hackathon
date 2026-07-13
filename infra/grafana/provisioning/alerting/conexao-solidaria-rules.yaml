@@ -1,0 +1,147 @@
+apiVersion: 1
+
+# Regras de alerta provisionadas (Grafana Unified Alerting).
+# Cada regra segue o pipeline padrao do Grafana:
+#   A  -> query Prometheus (instant)
+#   B  -> reduce (ultimo valor) sobre A
+#   C  -> threshold sobre B (condicao final)
+# A pasta "Conexao Solidaria" e criada automaticamente pelo provisioning se nao existir.
+groups:
+  - orgId: 1
+    name: conexao-solidaria-mensageria
+    folder: Conexao Solidaria
+    interval: 30s
+    rules:
+      # 1) Qualquer mensagem em dead-letter e um problema: alerta imediato.
+      - uid: conexao-dlq-gt-zero
+        title: DLQ com mensagens (dead-letter > 0)
+        condition: C
+        for: 0m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+          area: mensageria
+        annotations:
+          summary: "Ha mensagens na dead-letter queue"
+          description: "conexao_dead_letter_messages = {{ $values.B.Value }}. Mensagens de doacao foram descartadas para a DLQ."
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: Prometheus
+            model:
+              refId: A
+              expr: sum(conexao_dead_letter_messages)
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+
+      # 2) Outbox acumulando por 2min indica que o dispatcher nao esta vazando a fila.
+      - uid: conexao-outbox-backlog
+        title: Outbox pendente alto (> 20 por 2min)
+        condition: C
+        for: 2m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+          area: mensageria
+        annotations:
+          summary: "Backlog na outbox de doacoes"
+          description: "conexao_outbox_pending_messages = {{ $values.B.Value }} (> 20) ha pelo menos 2 minutos. O OutboxDispatcher pode estar travado ou o broker indisponivel."
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: Prometheus
+            model:
+              refId: A
+              expr: sum(conexao_outbox_pending_messages)
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [20]
+
+  - orgId: 1
+    name: conexao-solidaria-aplicacao
+    folder: Conexao Solidaria
+    interval: 30s
+    rules:
+      # 3) Taxa de erro 5xx global acima de 5% por 2min.
+      - uid: conexao-http-5xx-rate
+        title: Taxa de erro HTTP 5xx alta (> 5% por 2min)
+        condition: C
+        for: 2m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+          area: aplicacao
+        annotations:
+          summary: "Erros 5xx elevados nas APIs"
+          description: "Taxa de 5xx = {{ $values.B.Value }} (fracao do total) acima de 0.05 ha 2 minutos."
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: Prometheus
+            model:
+              refId: A
+              expr: sum(rate(http_request_duration_seconds_count{code=~"5.."}[5m])) / sum(rate(http_request_duration_seconds_count[5m]))
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.05]

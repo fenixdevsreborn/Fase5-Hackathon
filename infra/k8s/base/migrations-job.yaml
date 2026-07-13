@@ -1,0 +1,186 @@
+# =============================================================================
+# Migrations Jobs - Conexao Solidaria (B8)
+# -----------------------------------------------------------------------------
+# Aplicam o schema (EF Migrations) UMA vez, ANTES dos deployments subirem, para
+# evitar a corrida de MigrateAsync quando ha multiplas replicas (identity-api /
+# campaigns-api / donations-worker) tentando migrar o mesmo banco no boot.
+#
+# A flag RunMigrationsOnly=true (suportada pela app) faz o processo:
+#   1. aplicar as migrations pendentes;
+#   2. encerrar com exit 0 (nao serve HTTP, nao consome fila).
+# Nos deployments, Migrations__RunOnStartup=false faz a app NAO migrar no boot,
+# apenas aguardar o schema ja aplicado por estes Jobs.
+#
+# ORDENACAO (importante): o Kustomize NAO ordena a aplicacao dos recursos; um
+# unico `kubectl apply -k` cria Jobs e Deployments "ao mesmo tempo". Para garantir
+# que as migrations rodem ANTES, aplique os Jobs primeiro e aguarde a conclusao:
+#
+#   # 1) aplica apenas os Jobs de migracao (renderizados pelo overlay)
+#   kubectl apply -k infra/k8s/overlays/local \
+#     --dry-run=client -o yaml \
+#     | kubectl apply -f - --selector app.kubernetes.io/component=migration -f -
+#   # (alternativa simples e explicita, aplicando este arquivo diretamente:)
+#   kubectl apply -f infra/k8s/base/migrations-job.yaml -n conexao-solidaria
+#   kubectl wait --for=condition=complete --timeout=180s \
+#     job/campaigns-migrations job/identity-migrations -n conexao-solidaria
+#
+#   # 2) so entao aplica a stack completa (Deployments etc.)
+#   kubectl apply -k infra/k8s/overlays/local
+#
+# Como os Jobs sao idempotentes (EF so aplica migrations pendentes), reaplicar a
+# stack e seguro; um Job ja existente/completo nao e reexecutado.
+# =============================================================================
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: identity-migrations
+  labels:
+    app: identity-migrations
+    app.kubernetes.io/component: migration
+spec:
+  backoffLimit: 3
+  # Remove o Job automaticamente 5min apos concluir (evita lixo entre deploys).
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: identity-migrations
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: identity-migrations
+          image: conexao-solidaria/identity-api:local
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            # Migra o schema e encerra (nao sobe o servidor HTTP).
+            - name: RunMigrationsOnly
+              value: "true"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: postgres-password
+            - name: ConnectionStrings__IdentityDb
+              value: Host=postgres;Port=5432;Database=identitydb;Username=postgres;Password=$(POSTGRES_PASSWORD)
+            - name: Jwt__Issuer
+              value: ConexaoSolidaria
+            - name: Jwt__Audience
+              value: ConexaoSolidaria
+            - name: Jwt__Secret
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: jwt-secret
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: campaigns-migrations
+  labels:
+    app: campaigns-migrations
+    app.kubernetes.io/component: migration
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: campaigns-migrations
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: campaigns-migrations
+          image: conexao-solidaria/campaigns-api:local
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            # Migra o schema do campaignsdb e encerra. Como Campaigns.Api e
+            # Donations.Worker compartilham o CampaignsDbContext (mesmo bounded
+            # context, ver AD-23), UM unico Job cobre o schema dos dois processos.
+            - name: RunMigrationsOnly
+              value: "true"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: postgres-password
+            - name: ConnectionStrings__CampaignsDb
+              value: Host=postgres;Port=5432;Database=campaignsdb;Username=postgres;Password=$(POSTGRES_PASSWORD)
+            - name: Jwt__Issuer
+              value: ConexaoSolidaria
+            - name: Jwt__Audience
+              value: ConexaoSolidaria
+            - name: Jwt__Secret
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: jwt-secret
+            - name: RabbitMq__HostName
+              value: rabbitmq
+            - name: RabbitMq__Port
+              value: "5672"
+            - name: RabbitMq__UserName
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: rabbitmq-user
+            - name: RabbitMq__Password
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: rabbitmq-password
+            - name: Elasticsearch__Url
+              value: http://elasticsearch:9200
+            - name: Elasticsearch__IndexName
+              value: campanhas
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

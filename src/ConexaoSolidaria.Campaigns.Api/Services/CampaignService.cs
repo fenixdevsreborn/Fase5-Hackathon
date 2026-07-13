@@ -1,14 +1,29 @@
-using ConexaoSolidaria.Campaigns.Api.Data;
-using ConexaoSolidaria.Campaigns.Api.Domain;
+using ConexaoSolidaria.Shared.Domain;
+using ConexaoSolidaria.Shared.Persistence;
 using ConexaoSolidaria.Campaigns.Api.Repositories;
 using ConexaoSolidaria.Campaigns.Api.Responses;
 using Microsoft.EntityFrameworkCore;
+using Polly;
+using Polly.CircuitBreaker;
+using Polly.Registry;
 
 namespace ConexaoSolidaria.Campaigns.Api.Services;
 
+/// <summary>Acoes de ciclo de vida da campanha expostas ao gestor.</summary>
+public enum CampaignTransition
+{
+    Ativar,
+    Concluir,
+    Cancelar
+}
+
 public interface ICampaignService
 {
-    Task<Campaign?> GetByIdAsync(Guid id, CancellationToken cancellationToken);
+    /// <summary>
+    /// Leitura publica projetada direto para <see cref="CampanhaResponse"/> (AsNoTracking, sem
+    /// materializar a entidade rica rastreada). Retorna null quando a campanha nao existe.
+    /// </summary>
+    Task<CampanhaResponse?> GetResponseByIdAsync(Guid id, CancellationToken cancellationToken);
 
     Task<CampaignSearchResult<CampanhaResponse>> SearchAsync(
         string? term,
@@ -34,15 +49,56 @@ public interface ICampaignService
         decimal metaFinanceira,
         CampaignStatus status,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Aplica uma transicao de ciclo de vida (Ativar/Concluir/Cancelar) na campanha rastreada,
+    /// delegando as regras ao dominio (DomainRuleException em transicao invalida). Retorna null
+    /// quando a campanha nao existe.
+    /// </summary>
+    Task<Campaign?> TransitionAsync(
+        Guid id,
+        CampaignTransition action,
+        CancellationToken cancellationToken);
 }
 
-public sealed class CampaignService(
-    CampaignsDbContext db,
-    ICampaignSearchRepository searchRepository) : ICampaignService
+public sealed class CampaignService : ICampaignService
 {
-    public async Task<Campaign?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
+    /// <summary>Chave do pipeline de resiliencia (circuit breaker) que protege o Elasticsearch.</summary>
+    public const string SearchPipelineKey = "elasticsearch-search";
+
+    private readonly CampaignsDbContext db;
+    private readonly ICampaignSearchRepository searchRepository;
+    private readonly ILogger<CampaignService> logger;
+    private readonly ResiliencePipeline searchPipeline;
+
+    public CampaignService(
+        CampaignsDbContext db,
+        ICampaignSearchRepository searchRepository,
+        ResiliencePipelineProvider<string> pipelineProvider,
+        ILogger<CampaignService> logger)
     {
-        return await db.Campaigns.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        this.db = db;
+        this.searchRepository = searchRepository;
+        this.logger = logger;
+        this.searchPipeline = pipelineProvider.GetPipeline(SearchPipelineKey);
+    }
+
+    public async Task<CampanhaResponse?> GetResponseByIdAsync(Guid id, CancellationToken cancellationToken)
+    {
+        // Projecao direta para o DTO publico: AsNoTracking + Select, sem materializar a entidade rica.
+        return await db.Campaigns
+            .AsNoTracking()
+            .Where(item => item.Id == id)
+            .Select(item => new CampanhaResponse(
+                item.Id,
+                item.Titulo,
+                item.Descricao,
+                item.DataInicio,
+                item.DataFim,
+                item.MetaFinanceira,
+                item.ValorTotalArrecadado,
+                item.Status))
+            .SingleOrDefaultAsync(cancellationToken);
     }
 
     public async Task<CampaignSearchResult<CampanhaResponse>> SearchAsync(
@@ -59,11 +115,75 @@ public sealed class CampaignService(
         page = Math.Max(page, 1);
         pageSize = pageSize < 1 ? 10 : Math.Clamp(pageSize, 1, 100);
 
-        var result = await searchRepository.SearchAsync(term.Trim(), page, pageSize, cancellationToken);
+        var normalizedTerm = term.Trim();
 
-        return new CampaignSearchResult<CampanhaResponse>(
-            result.Items.Select(ToResponse).ToList(),
-            result.Total);
+        try
+        {
+            // Circuit breaker: a chamada ao ES passa pelo pipeline. Apos N falhas o circuito abre e
+            // ExecuteAsync passa a lancar BrokenCircuitException IMEDIATAMENTE (sem martelar o ES) por
+            // um periodo, caindo direto no fallback do Postgres abaixo.
+            var result = await searchPipeline.ExecuteAsync(
+                async token => await searchRepository.SearchAsync(normalizedTerm, page, pageSize, token),
+                cancellationToken);
+
+            return new CampaignSearchResult<CampanhaResponse>(
+                result.Items.Select(ToResponse).ToList(),
+                result.Total);
+        }
+        catch (BrokenCircuitException)
+        {
+            // Circuito aberto: nem tentamos o ES, vamos direto ao Postgres.
+            logger.LogWarning(
+                "Circuito do Elasticsearch ABERTO. Servindo a busca '{Term}' direto do PostgreSQL.",
+                normalizedTerm);
+
+            return await SearchInDatabaseAsync(normalizedTerm, page, pageSize, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            // Degradacao graciosa: se o Elasticsearch falhar/timeout, cai para uma busca no PostgreSQL
+            // (ILIKE em Titulo/Descricao) com a mesma paginacao e formato de resultado.
+            logger.LogWarning(
+                ex,
+                "Busca no Elasticsearch indisponivel para o termo '{Term}'. Aplicando fallback para PostgreSQL.",
+                normalizedTerm);
+
+            return await SearchInDatabaseAsync(normalizedTerm, page, pageSize, cancellationToken);
+        }
+    }
+
+    private async Task<CampaignSearchResult<CampanhaResponse>> SearchInDatabaseAsync(
+        string term,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var pattern = $"%{term}%";
+
+        var query = db.Campaigns
+            .AsNoTracking()
+            .Where(campaign =>
+                EF.Functions.ILike(campaign.Titulo, pattern) ||
+                EF.Functions.ILike(campaign.Descricao, pattern));
+
+        var total = await query.LongCountAsync(cancellationToken);
+
+        var items = await query
+            .OrderByDescending(campaign => campaign.CriadaEm)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(campaign => new CampanhaResponse(
+                campaign.Id,
+                campaign.Titulo,
+                campaign.Descricao,
+                campaign.DataInicio,
+                campaign.DataFim,
+                campaign.MetaFinanceira,
+                campaign.ValorTotalArrecadado,
+                campaign.Status))
+            .ToListAsync(cancellationToken);
+
+        return new CampaignSearchResult<CampanhaResponse>(items, total);
     }
 
     public async Task<Campaign> CreateAsync(
@@ -115,6 +235,37 @@ public sealed class CampaignService(
             metaFinanceira,
             status,
             DateTimeOffset.UtcNow);
+
+        await db.SaveChangesAsync(cancellationToken);
+        await searchRepository.IndexAsync(campaign, cancellationToken);
+
+        return campaign;
+    }
+
+    public async Task<Campaign?> TransitionAsync(
+        Guid id,
+        CampaignTransition action,
+        CancellationToken cancellationToken)
+    {
+        var campaign = await db.Campaigns.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        if (campaign is null)
+        {
+            return null;
+        }
+
+        // Regras de transicao ficam no dominio; DomainRuleException vira 422 no handler global.
+        switch (action)
+        {
+            case CampaignTransition.Ativar:
+                campaign.Ativar();
+                break;
+            case CampaignTransition.Concluir:
+                campaign.Concluir();
+                break;
+            case CampaignTransition.Cancelar:
+                campaign.Cancelar();
+                break;
+        }
 
         await db.SaveChangesAsync(cancellationToken);
         await searchRepository.IndexAsync(campaign, cancellationToken);

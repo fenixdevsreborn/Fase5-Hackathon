@@ -1,0 +1,62 @@
+@page "/doador/doacoes/{Id}"
+@using ConexaoSolidaria.Web.Components.Donations
+
+<PageTitle>Acompanhar doacao</PageTitle>
+
+<AuthorizeView Roles="Doador">
+    <Authorized>
+        <MudBreadcrumbs Items="_breadcrumbs" Class="px-0" />
+        <MudText Typo="Typo.h4" GutterBottom="true">Acompanhar doacao</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            Esta pagina acompanha o processamento assincrono da sua doacao em tempo real.
+        </MudText>
+
+        @if (_doacaoId is Guid id)
+        {
+            <MudContainer MaxWidth="MaxWidth.Small" Class="pa-0">
+                <DonationStatus DoacaoId="id" />
+            </MudContainer>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="my-4">
+                ID de doacao invalido. Verifique o endereco e tente novamente.
+                <MudButton Href="/doador" Size="Size.Small" Class="ml-2">Voltar ao painel</MudButton>
+            </MudAlert>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <MudPaper Elevation="0" Class="pa-8 my-4 d-flex flex-column align-center" Style="border:1px dashed var(--mud-palette-lines-default);border-radius:16px;">
+            <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Large" Color="Color.Secondary" />
+            <MudText Typo="Typo.h6" Class="mt-2">Acesso restrito</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                Faca login como doador para acompanhar suas doacoes.
+            </MudText>
+            <MudButton Href="@EntrarHref" Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Login">
+                Entrar
+            </MudButton>
+        </MudPaper>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    [Parameter]
+    public string? Id { get; set; }
+
+    private Guid? _doacaoId;
+    private List<BreadcrumbItem> _breadcrumbs = new();
+
+    private string EntrarHref =>
+        $"/entrar?returnUrl={Uri.EscapeDataString($"/doador/doacoes/{Id}")}";
+
+    protected override void OnParametersSet()
+    {
+        _doacaoId = Guid.TryParse(Id, out var id) ? id : null;
+        _breadcrumbs = new()
+        {
+            new BreadcrumbItem("Meu painel", "/doador"),
+            new BreadcrumbItem("Doacao", null, disabled: true),
+        };
+    }
+}

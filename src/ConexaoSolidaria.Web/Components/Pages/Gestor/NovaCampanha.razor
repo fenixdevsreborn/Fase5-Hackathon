@@ -1,0 +1,62 @@
+@page "/gestor/campanhas/nova"
+@using ConexaoSolidaria.Web.Components.Campaigns
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>Nova campanha</PageTitle>
+
+<AuthorizeView Roles="GestorONG">
+    <Authorized>
+        <MudText Typo="Typo.h4" GutterBottom="true">Nova campanha</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            Preencha os dados da campanha. As regras finais são validadas pelo servidor.
+        </MudText>
+
+        <MudPaper Class="pa-6" Elevation="1" Style="max-width:820px">
+            <CampaignForm Model="_model"
+                          SubmitLabel="Criar campanha"
+                          OnSubmit="CriarAsync"
+                          ErrorMessage="@_erro" />
+        </MudPaper>
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert Severity="Severity.Warning" Class="my-4">
+            Área restrita a gestores de ONG.
+            <MudLink Href="/entrar">Entrar</MudLink>
+        </MudAlert>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private readonly SalvarCampanha _model = new(
+        Titulo: string.Empty,
+        Descricao: string.Empty,
+        DataInicio: DateTimeOffset.Now,
+        DataFim: DateTimeOffset.Now.AddDays(30),
+        MetaFinanceira: 0m,
+        Status: "Ativa");
+
+    private string? _erro;
+
+    private async Task CriarAsync(SalvarCampanha dto)
+    {
+        _erro = null;
+        try
+        {
+            var criada = await Api.CriarCampanhaAsync(dto);
+            if (criada is null)
+            {
+                _erro = "Não foi possível criar (verifique meta>0 e datas).";
+                return;
+            }
+
+            Snackbar.Add("Campanha criada com sucesso.", Severity.Success);
+            Nav.NavigateTo("/gestor");
+        }
+        catch
+        {
+            _erro = "Ocorreu um erro inesperado ao criar a campanha. Tente novamente.";
+        }
+    }
+}

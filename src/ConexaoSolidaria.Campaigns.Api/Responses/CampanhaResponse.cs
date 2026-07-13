@@ -1,4 +1,4 @@
-using ConexaoSolidaria.Campaigns.Api.Domain;
+using ConexaoSolidaria.Shared.Domain;
 
 namespace ConexaoSolidaria.Campaigns.Api.Responses;
 

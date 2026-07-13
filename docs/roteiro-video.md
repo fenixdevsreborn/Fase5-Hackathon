@@ -24,10 +24,14 @@ docker build -f src/ConexaoSolidaria.Campaigns.Api/Dockerfile -t conexao-solidar
 docker build -f src/ConexaoSolidaria.Donations.Worker/Dockerfile -t conexao-solidaria/donations-worker:local .
 ```
 
-5. Aplicacao subida:
+5. Aplicacao subida (Kustomize; imagens das 5 apps ja buildadas/carregadas — ver ReadmeKubernetes.md):
 
 ```powershell
-kubectl apply -f infra/k8s/conexao-solidaria.yaml
+# Secret a partir do template + deploy do overlay local
+Copy-Item infra/k8s/secret.example.yaml infra/k8s/secret.yaml   # preencher os placeholders
+kubectl create namespace conexao-solidaria
+kubectl apply -f infra/k8s/secret.yaml
+kubectl apply -k infra/k8s/overlays/local
 kubectl wait --for=condition=Ready pod --all -n conexao-solidaria --timeout=300s
 ```
 
@@ -42,14 +46,14 @@ kubectl wait --for=condition=Ready pod --all -n conexao-solidaria --timeout=300s
    - Prometheus: http://localhost:30090
    - Zabbix: http://localhost:30085
 
-Credenciais uteis:
+Credenciais uteis (os valores reais vem do `.env`; veja `.env.example` e `SECURITY.md`. Nunca commite credenciais reais):
 
 | Recurso | Usuario | Senha |
 | --- | --- | --- |
-| Gestor ONG | `gestor@conexaosolidaria.local` | `Gestor@123456` |
-| RabbitMQ | `guest` | `guest` |
-| Grafana | `admin` | `admin` |
-| Zabbix | `Admin` | `zabbix` |
+| Gestor ONG | `gestor@conexaosolidaria.local` | `.env` -> `SEED_MANAGER_PASSWORD` |
+| RabbitMQ | `.env` -> `RABBITMQ_USER` | `.env` -> `RABBITMQ_PASSWORD` |
+| Grafana | `.env` -> `GRAFANA_ADMIN_USER` | `.env` -> `GRAFANA_ADMIN_PASSWORD` |
+| Zabbix | `Admin` | `.env` -> `ZABBIX_PASSWORD` |
 
 ## Marcacao de tempo sugerida
 
@@ -208,7 +212,7 @@ Abrir: http://localhost:30300
 Login:
 
 ```text
-admin / admin
+Usuario e senha do Grafana definidos no .env (GRAFANA_ADMIN_USER / GRAFANA_ADMIN_PASSWORD)
 ```
 
 Abrir dashboard:
@@ -232,7 +236,7 @@ Abrir: http://localhost:30085
 Login:
 
 ```text
-Admin / zabbix
+Usuario Admin; senha definida no .env (ZABBIX_PASSWORD)
 ```
 
 Fala sugerida:
@@ -275,7 +279,7 @@ Payload:
 ```json
 {
   "email": "gestor@conexaosolidaria.local",
-  "senha": "Gestor@123456"
+  "senha": "<use a senha do gestor definida em SEED_MANAGER_PASSWORD>"
 }
 ```
 
@@ -398,7 +402,7 @@ Mostrar: RabbitMQ em http://localhost:31672
 
 Acao:
 
-- Login `guest` / `guest`.
+- Login com o usuario e senha do RabbitMQ definidos no `.env` (`RABBITMQ_USER` / `RABBITMQ_PASSWORD`).
 - Abrir `Queues and Streams`.
 - Selecionar fila `doacoes-recebidas`.
 

@@ -1,0 +1,63 @@
+# Dependabot — atualizacoes automaticas semanais.
+# Ecossistemas: NuGet (raiz da solucao), GitHub Actions e Docker (5 servicos).
+version: 2
+updates:
+  # --- Dependencias .NET / NuGet (solucao inteira a partir da raiz) ---
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "nuget"
+
+  # --- Actions usadas nos workflows ---
+  - package-ecosystem: "github-actions"
+    directory: "/.github/workflows"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  # --- Imagens base dos 5 Dockerfiles ---
+  - package-ecosystem: "docker"
+    directory: "/src/ConexaoSolidaria.Identity.Api"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  - package-ecosystem: "docker"
+    directory: "/src/ConexaoSolidaria.Campaigns.Api"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  - package-ecosystem: "docker"
+    directory: "/src/ConexaoSolidaria.Donations.Worker"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  - package-ecosystem: "docker"
+    directory: "/src/ConexaoSolidaria.Gateway"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  - package-ecosystem: "docker"
+    directory: "/src/ConexaoSolidaria.Web"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"

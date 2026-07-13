@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: elasticsearch-data
+  labels:
+    app: elasticsearch
+spec:
+  # Persistencia #K8S-003: PVC dedicado do Elasticsearch (indices de campanhas).
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 3Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch
+  labels:
+    app: elasticsearch
+    app.kubernetes.io/component: search
+spec:
+  replicas: 1
+  # RWO: um unico pod escreve no volume; evita duas replicas disputando o PVC.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      # A imagem do ES roda como uid 1000; fsGroup garante o diretorio data gravavel.
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: elasticsearch
+          image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+          ports:
+            - name: http
+              containerPort: 9200
+          env:
+            - name: discovery.type
+              value: single-node
+            - name: xpack.security.enabled
+              value: "false"
+            - name: ES_JAVA_OPTS
+              value: -Xms512m -Xmx512m
+          resources:
+            requests:
+              memory: 768Mi
+              cpu: 250m
+            limits:
+              memory: 1Gi
+              cpu: "1"
+          volumeMounts:
+            - name: elasticsearch-data
+              mountPath: /usr/share/elasticsearch/data
+          readinessProbe:
+            httpGet:
+              path: /_cluster/health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+      volumes:
+        - name: elasticsearch-data
+          persistentVolumeClaim:
+            claimName: elasticsearch-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  labels:
+    app: elasticsearch
+spec:
+  type: ClusterIP
+  selector:
+    app: elasticsearch
+  ports:
+    - name: http
+      port: 9200
+      targetPort: http

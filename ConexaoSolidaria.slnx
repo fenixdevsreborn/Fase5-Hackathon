@@ -1,11 +1,17 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/ConexaoSolidaria.AppHost/ConexaoSolidaria.AppHost.csproj" />
     <Project Path="src/ConexaoSolidaria.Campaigns.Api/ConexaoSolidaria.Campaigns.Api.csproj" />
+    <Project Path="src/ConexaoSolidaria.Contracts/ConexaoSolidaria.Contracts.csproj" />
     <Project Path="src/ConexaoSolidaria.Donations.Worker/ConexaoSolidaria.Donations.Worker.csproj" />
+    <Project Path="src/ConexaoSolidaria.Gateway/ConexaoSolidaria.Gateway.csproj" />
     <Project Path="src/ConexaoSolidaria.Identity.Api/ConexaoSolidaria.Identity.Api.csproj" />
+    <Project Path="src/ConexaoSolidaria.ServiceDefaults/ConexaoSolidaria.ServiceDefaults.csproj" />
     <Project Path="src/ConexaoSolidaria.Shared/ConexaoSolidaria.Shared.csproj" />
+    <Project Path="src/ConexaoSolidaria.Web/ConexaoSolidaria.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/ConexaoSolidaria.IntegrationTests/ConexaoSolidaria.IntegrationTests.csproj" />
     <Project Path="tests/ConexaoSolidaria.Tests/ConexaoSolidaria.Tests.csproj" />
   </Folder>
 </Solution>

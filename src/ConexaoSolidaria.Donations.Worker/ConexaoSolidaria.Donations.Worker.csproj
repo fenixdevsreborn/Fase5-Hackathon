@@ -14,6 +14,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\ConexaoSolidaria.Contracts\ConexaoSolidaria.Contracts.csproj" />
     <ProjectReference Include="..\ConexaoSolidaria.Shared\ConexaoSolidaria.Shared.csproj" />
+    <ProjectReference Include="..\ConexaoSolidaria.ServiceDefaults\ConexaoSolidaria.ServiceDefaults.csproj" />
   </ItemGroup>
 </Project>

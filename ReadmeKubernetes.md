@@ -1,568 +1,397 @@
-# Kubernetes no Docker Desktop
+# Kubernetes (Kustomize) - Conexão Solidária
 
-Este guia mostra o passo a passo para subir a aplicacao Conexao Solidaria no Kubernetes local do Docker Desktop.
+Playbook para subir o **Conexão Solidária** no Kubernetes local do **Docker Desktop**.
+Este é o **processo real validado ao vivo** (Docker Desktop Kubernetes **v1.36.1**,
+baseado em `kind`): build das 5 imagens → carga no node → Secret → `kubectl apply -k`.
 
-O manifesto principal fica em:
+Os manifestos são **Kustomize** (base + overlay), com hardening de produção.
 
 ```text
-infra/k8s/conexao-solidaria.yaml
+infra/k8s/
+  base/                      # Manifestos por recurso (agnósticos de ambiente)
+    namespace.yaml
+    postgres.yaml            # StatefulSet + PVC (volumeClaimTemplates)
+    rabbitmq.yaml            # StatefulSet + PVC (volumeClaimTemplates)
+    elasticsearch.yaml       # Deployment + PVC dedicado
+    identity-api.yaml
+    campaigns-api.yaml
+    donations-worker.yaml
+    gateway.yaml             # YARP (entrada das APIs)
+    web.yaml                 # Blazor Server
+    migrations-job.yaml      # Jobs identity-migrations / campaigns-migrations (RunMigrationsOnly)
+    observability.yaml       # Prometheus + Grafana
+    zabbix.yaml              # zabbix-server + zabbix-web
+    ingress.yaml             # nginx: /api -> gateway, / -> web
+    network-policies.yaml    # default-deny ingress + allow-list
+    pdb.yaml
+    hpa.yaml                 # gateway, identity-api, campaigns-api (por CPU)
+    kustomization.yaml
+  overlays/local/
+    kustomization.yaml       # namespace, images :local, patches
+    resource-patches.yaml    # NodePort (gateway 30080 / web 30088) + ES enxuto
+  secret.example.yaml        # Template do Secret (o secret.yaml real é gitignored)
+  smoke.ps1                  # apply + rollout + get
 ```
 
-Ele cria:
+> Documento de infra detalhado: `infra/k8s/README.md`. Decisões e trade-offs:
+> `docs/decisoes-arquiteturais.md` (AD-19, AD-23). Observabilidade: `ReadmeObservabilidade.md`.
+> Operação de incidentes: `docs/runbook.md`.
 
-- Namespace `conexao-solidaria`.
-- PostgreSQL.
-- RabbitMQ com Management UI.
-- Elasticsearch para busca de campanhas.
-- Identity API.
-- Campaigns API.
-- Donations Worker.
-- Prometheus.
-- Grafana.
-- Zabbix Server.
-- Zabbix Web.
+## 1. Pré-requisitos
 
-## 1. Pre-requisitos
-
-Instale e habilite:
-
-- Docker Desktop.
-- Kubernetes do Docker Desktop.
+- Docker Desktop com **Kubernetes** habilitado (`Settings > Kubernetes > Enable Kubernetes`).
+  O node do control plane é o container `desktop-control-plane` (kind).
 - `kubectl`.
+- Para o Ingress: **nginx ingress controller** instalado e uma entrada em `hosts`
+  apontando `conexao-solidaria.local` para `127.0.0.1`. Sem ele, use o fallback NodePort.
+- Para o HPA: **metrics-server** no cluster.
 
-No Docker Desktop:
-
-1. Abra `Settings`.
-2. Va em `Kubernetes`.
-3. Marque `Enable Kubernetes`.
-4. Clique em `Apply & Restart`.
-5. Aguarde o status do Kubernetes ficar ativo.
-
-Verifique no terminal:
-
-```powershell
-docker --version
-kubectl version --client
-```
-
-## 2. Selecionar o contexto correto
-
-Antes de aplicar qualquer manifesto, selecione o contexto local do Docker Desktop:
+Selecione o contexto local antes de qualquer coisa:
 
 ```powershell
 kubectl config get-contexts
 kubectl config use-context docker-desktop
-kubectl config current-context
+kubectl config current-context   # deve imprimir: docker-desktop
 ```
 
-O resultado esperado para o ultimo comando:
-
-```text
-docker-desktop
-```
-
-Se o contexto estiver apontando para outro cluster, como EKS, AKS ou GKE, o deploy pode falhar ou ir para o ambiente errado.
-
-## 3. Opcional: parar o Docker Compose
-
-Se a aplicacao estiver rodando via Docker Compose, pare antes de subir no Kubernetes para evitar confusao durante os testes:
+Se estiver rodando via Docker Compose, pare para evitar conflito de portas:
 
 ```powershell
 docker compose down
 ```
 
-## 4. Build das imagens locais
+> **kubeconfig com CA desatualizada (só local).** Após atualizações do Docker Desktop,
+> o certificado da API pode não bater com o CA do kubeconfig e o `kubectl` falha com
+> `x509: certificate signed by unknown authority`. Correção **apenas para o cluster local**:
+>
+> ```powershell
+> kubectl config set-cluster docker-desktop --insecure-skip-tls-verify=true
+> ```
+>
+> Nunca use `--insecure-skip-tls-verify` fora de um cluster de desenvolvimento local.
 
-O manifesto Kubernetes usa imagens locais com tag `:local`:
+## 2. Build das 5 imagens locais
 
-```text
-conexao-solidaria/identity-api:local
-conexao-solidaria/campaigns-api:local
-conexao-solidaria/donations-worker:local
-```
-
-Crie as imagens:
+O overlay `local` referencia as imagens com tag `:local` (definidas em
+`overlays/local/kustomization.yaml`). Rode o build a partir da **raiz do repo**:
 
 ```powershell
-docker build -f src/ConexaoSolidaria.Identity.Api/Dockerfile -t conexao-solidaria/identity-api:local .
-docker build -f src/ConexaoSolidaria.Campaigns.Api/Dockerfile -t conexao-solidaria/campaigns-api:local .
+docker build -f src/ConexaoSolidaria.Identity.Api/Dockerfile     -t conexao-solidaria/identity-api:local .
+docker build -f src/ConexaoSolidaria.Campaigns.Api/Dockerfile    -t conexao-solidaria/campaigns-api:local .
 docker build -f src/ConexaoSolidaria.Donations.Worker/Dockerfile -t conexao-solidaria/donations-worker:local .
+docker build -f src/ConexaoSolidaria.Gateway/Dockerfile          -t conexao-solidaria/gateway:local .
+docker build -f src/ConexaoSolidaria.Web/Dockerfile              -t conexao-solidaria/web:local .
 ```
-
-Confira se as imagens foram criadas:
-
-```powershell
-docker images conexao-solidaria/identity-api
-docker images conexao-solidaria/campaigns-api
-docker images conexao-solidaria/donations-worker
-```
-
-## 5. Aplicar o manifesto Kubernetes
-
-Suba todos os recursos:
-
-```powershell
-kubectl apply -f infra/k8s/conexao-solidaria.yaml
-```
-
-Confira o namespace:
-
-```powershell
-kubectl get namespace conexao-solidaria
-```
-
-Confira os pods:
-
-```powershell
-kubectl get pods -n conexao-solidaria
-```
-
-Confira os services:
-
-```powershell
-kubectl get svc -n conexao-solidaria
-```
-
-## 6. Aguardar os pods ficarem prontos
-
-Use:
-
-```powershell
-kubectl wait --for=condition=Ready pod --all -n conexao-solidaria --timeout=300s
-```
-
-Se algum pod ainda estiver criando banco, baixando imagem ou iniciando a aplicacao, acompanhe com:
-
-```powershell
-kubectl get pods -n conexao-solidaria -w
-```
-
-## 7. URLs de acesso
-
-No Docker Desktop, os services `NodePort` ficam acessiveis via `localhost`.
-
-| Recurso | URL |
-| --- | --- |
-| Identity Swagger | http://localhost:30081/swagger |
-| Campaigns Swagger | http://localhost:30082/swagger |
-| Donations Worker health | http://localhost:30083/health |
-| Elasticsearch | http://localhost:30920 |
-| RabbitMQ Management | http://localhost:31672 |
-| Prometheus | http://localhost:30090 |
-| Grafana | http://localhost:30300 |
-| Zabbix Web | http://localhost:30085 |
-
-Credenciais:
-
-| Recurso | Usuario | Senha |
-| --- | --- | --- |
-| RabbitMQ | `guest` | `guest` |
-| Grafana | `admin` | `admin` |
-| Zabbix | `Admin` | `zabbix` |
-
-Usuario gestor seedado pela Identity API:
-
-| Campo | Valor |
-| --- | --- |
-| Email | `gestor@conexaosolidaria.local` |
-| Senha | `Gestor@123456` |
-| Role | `GestorONG` |
-
-## 8. Teste rapido da aplicacao
-
-### 8.1. Login do gestor
-
-Acesse:
-
-```text
-http://localhost:30081/swagger
-```
-
-Use o endpoint:
-
-```text
-POST /api/auth/login
-```
-
-Payload:
-
-```json
-{
-  "email": "gestor@conexaosolidaria.local",
-  "senha": "Gestor@123456"
-}
-```
-
-Copie o campo `accessToken`.
-
-### 8.2. Criar campanha
-
-Acesse:
-
-```text
-http://localhost:30082/swagger
-```
-
-Clique em `Authorize` e informe:
-
-```text
-Bearer SEU_TOKEN
-```
-
-Use:
-
-```text
-POST /api/campanhas
-```
-
-Payload de exemplo:
-
-```json
-{
-  "titulo": "Natal Solidario",
-  "descricao": "Campanha para arrecadacao de brinquedos e alimentos.",
-  "dataInicio": "2026-06-01T00:00:00Z",
-  "dataFim": "2026-12-31T23:59:59Z",
-  "metaFinanceira": 10000,
-  "status": "Ativa"
-}
-```
-
-### 8.3. Criar doador
-
-Volte para:
-
-```text
-http://localhost:30081/swagger
-```
-
-Use:
-
-```text
-POST /api/auth/cadastro-doador
-```
-
-Payload:
-
-```json
-{
-  "nomeCompleto": "Maria Doadora",
-  "email": "maria.doadora@example.com",
-  "cpf": "390.533.447-05",
-  "senha": "Doador@123"
-}
-```
-
-Copie o `accessToken` retornado para usar como doador.
-
-### 8.4. Fazer doacao
-
-No Swagger da Campaigns API:
-
-```text
-http://localhost:30082/swagger
-```
-
-Autorize com o token do doador:
-
-```text
-Bearer TOKEN_DO_DOADOR
-```
-
-Use:
-
-```text
-POST /api/doacoes
-```
-
-Payload:
-
-```json
-{
-  "idCampanha": "ID_DA_CAMPANHA",
-  "valorDoacao": 150
-}
-```
-
-Depois consulte:
-
-```text
-GET /api/campanhas/transparencia
-```
-
-O valor arrecadado deve ser atualizado pelo `Donations Worker`.
-
-### 8.5. Buscar campanhas no Elasticsearch
-
-Depois de criar uma campanha, consulte:
-
-```text
-GET /api/campanhas/search?q=Natal&page=1&pageSize=10
-```
-
-O endpoint faz busca fuzzy em `titulo` e `descricao` e retorna os metadados de paginacao.
-
-Para verificar o Elasticsearch diretamente:
-
-```powershell
-curl.exe http://localhost:30920/_cluster/health
-curl.exe http://localhost:30920/_cat/indices?v
-```
-
-## 9. Observabilidade no Kubernetes
-
-Prometheus:
-
-```text
-http://localhost:30090
-```
-
-Consulta para verificar targets:
-
-```promql
-up
-```
-
-Grafana:
-
-```text
-http://localhost:30300
-```
-
-Login:
-
-```text
-admin / admin
-```
-
-Abra o dashboard:
-
-```text
-Conexao Solidaria - Kubernetes
-```
-
-Metricas importantes:
-
-```promql
-sum(rate(http_requests_received_total[1m])) by (job)
-sum(conexao_donations_processed_total)
-sum(conexao_donations_rejected_total)
-```
-
-Zabbix:
-
-```text
-http://localhost:30085
-```
-
-Login:
-
-```text
-Admin / zabbix
-```
-
-## 10. Ver logs
-
-Identity API:
-
-```powershell
-kubectl logs -f deployment/identity-api -n conexao-solidaria
-```
-
-Campaigns API:
-
-```powershell
-kubectl logs -f deployment/campaigns-api -n conexao-solidaria
-```
-
-Donations Worker:
-
-```powershell
-kubectl logs -f deployment/donations-worker -n conexao-solidaria
-```
-
-RabbitMQ:
-
-```powershell
-kubectl logs -f deployment/rabbitmq -n conexao-solidaria
-```
-
-Elasticsearch:
-
-```powershell
-kubectl logs -f deployment/elasticsearch -n conexao-solidaria
-```
-
-PostgreSQL:
-
-```powershell
-kubectl logs -f deployment/postgres -n conexao-solidaria
-```
-
-## 11. Rebuild apos alterar codigo
-
-Depois de alterar codigo das APIs ou do worker, reconstrua as imagens:
-
-```powershell
-docker build -f src/ConexaoSolidaria.Identity.Api/Dockerfile -t conexao-solidaria/identity-api:local .
-docker build -f src/ConexaoSolidaria.Campaigns.Api/Dockerfile -t conexao-solidaria/campaigns-api:local .
-docker build -f src/ConexaoSolidaria.Donations.Worker/Dockerfile -t conexao-solidaria/donations-worker:local .
-```
-
-Reinicie os deployments:
-
-```powershell
-kubectl rollout restart deployment/identity-api -n conexao-solidaria
-kubectl rollout restart deployment/campaigns-api -n conexao-solidaria
-kubectl rollout restart deployment/donations-worker -n conexao-solidaria
-```
-
-Acompanhe:
-
-```powershell
-kubectl rollout status deployment/identity-api -n conexao-solidaria
-kubectl rollout status deployment/campaigns-api -n conexao-solidaria
-kubectl rollout status deployment/donations-worker -n conexao-solidaria
-```
-
-## 12. Remover a aplicacao do Kubernetes
-
-Para remover todos os recursos criados pelo manifesto:
-
-```powershell
-kubectl delete -f infra/k8s/conexao-solidaria.yaml
-```
-
-Confirme:
-
-```powershell
-kubectl get all -n conexao-solidaria
-```
-
-Se o namespace ainda existir e voce quiser remove-lo manualmente:
-
-```powershell
-kubectl delete namespace conexao-solidaria
-```
-
-## 13. Troubleshooting
-
-### Docker Desktop nao esta rodando
-
-Erro comum:
-
-```text
-dockerDesktopLinuxEngine
-```
-
-Solucao:
-
-1. Abra o Docker Desktop.
-2. Aguarde o engine iniciar.
-3. Rode:
-
-```powershell
-docker ps
-```
-
-### Contexto Kubernetes errado
-
-Se `kubectl` tentar acessar outro cluster:
-
-```powershell
-kubectl config get-contexts
-kubectl config use-context docker-desktop
-```
-
-### Pod em CrashLoopBackOff
-
-Veja os logs:
-
-```powershell
-kubectl logs deployment/NOME_DO_DEPLOYMENT -n conexao-solidaria
-```
-
-Veja os eventos:
-
-```powershell
-kubectl describe pod NOME_DO_POD -n conexao-solidaria
-```
-
-### Imagem local nao encontrada
-
-Confirme se a imagem existe:
-
-```powershell
-docker images conexao-solidaria/identity-api
-docker images conexao-solidaria/campaigns-api
-docker images conexao-solidaria/donations-worker
-```
-
-Depois reinicie o deployment:
-
-```powershell
-kubectl rollout restart deployment/identity-api -n conexao-solidaria
-```
-
-### Banco ainda nao inicializou
 
 Confira:
 
 ```powershell
-kubectl logs -f deployment/postgres -n conexao-solidaria
+docker images --filter=reference='conexao-solidaria/*:local'
 ```
 
-As APIs tentam reconectar ao banco durante a inicializacao, entao aguarde alguns segundos e veja:
+## 3. Carregar as imagens no cluster (passo crítico)
+
+O Kubernetes do Docker Desktop roda dentro do node `kind` `desktop-control-plane`, que tem
+seu **próprio** container runtime (`containerd`) - **separado** do daemon do Docker onde as
+imagens foram construídas. Uma imagem que aparece em `docker images` **não** está
+automaticamente visível para os pods; sem carregá-la, os pods ficam em `ErrImageNeverPull`
+/ `ImagePullBackOff` (as imagens usam `imagePullPolicy: IfNotPresent` e não existem em
+nenhum registry).
+
+Não usamos a CLI `kind` (não instalada). A carga é feita salvando cada imagem e
+importando-a no `containerd` do node via `ctr` (namespace `k8s.io`):
 
 ```powershell
-kubectl get pods -n conexao-solidaria
+foreach ($svc in @('identity-api','campaigns-api','donations-worker','gateway','web')) {
+  docker save "conexao-solidaria/$svc:local" | docker exec -i desktop-control-plane ctr -n k8s.io images import -
+}
 ```
 
-### Grafana sem dados
-
-1. Acesse Prometheus em http://localhost:30090.
-2. Execute:
-
-```promql
-up
-```
-
-3. Gere trafego nos Swagger.
-4. Aguarde o scrape de 5 segundos.
-5. Atualize o dashboard no Grafana.
-
-### RabbitMQ sem mensagens visiveis
-
-O worker consome rapidamente as mensagens. Para demonstrar o fluxo:
-
-1. Abra RabbitMQ em http://localhost:31672.
-2. Va em `Queues and Streams`.
-3. Observe a fila `doacoes-recebidas`.
-4. Envie uma doacao pelo Swagger.
-5. A mensagem pode aparecer e sumir rapidamente porque o worker processa a fila.
-
-### Elasticsearch nao inicia
-
-Confira o pod e os logs:
+Equivalente, imagem a imagem:
 
 ```powershell
-kubectl get pods -n conexao-solidaria
-kubectl describe deployment/elasticsearch -n conexao-solidaria
-kubectl logs deployment/elasticsearch -n conexao-solidaria
+docker save conexao-solidaria/identity-api:local     | docker exec -i desktop-control-plane ctr -n k8s.io images import -
+docker save conexao-solidaria/campaigns-api:local    | docker exec -i desktop-control-plane ctr -n k8s.io images import -
+docker save conexao-solidaria/donations-worker:local | docker exec -i desktop-control-plane ctr -n k8s.io images import -
+docker save conexao-solidaria/gateway:local          | docker exec -i desktop-control-plane ctr -n k8s.io images import -
+docker save conexao-solidaria/web:local              | docker exec -i desktop-control-plane ctr -n k8s.io images import -
 ```
 
-O Elasticsearch reserva ate `1Gi` de memoria no manifesto. Confirme que o Docker Desktop tem memoria suficiente disponivel para o Kubernetes.
+Validar que o node enxerga as imagens:
 
-### Busca retorna lista vazia
-
-Somente campanhas criadas ou atualizadas depois da implantacao da integracao sao indexadas automaticamente. Crie uma nova campanha ou atualize uma existente e consulte novamente:
-
-```text
-GET /api/campanhas/search?q=parte-do-titulo&page=1&pageSize=10
+```powershell
+docker exec desktop-control-plane ctr -n k8s.io images ls | Select-String conexao-solidaria
 ```
 
-## 14. Observacao sobre persistencia
+> Repita este passo **sempre** que reconstruir uma imagem (veja a seção *Rebuild*). Sem
+> reimportar, o cluster continua rodando a versão antiga.
 
-Este manifesto e voltado para ambiente local de hackathon.
+## 4. Criar o Secret (fora do Git)
 
-PostgreSQL e Elasticsearch usam `emptyDir`, portanto os dados podem ser perdidos quando os pods forem recriados ou o manifesto removido. Para producao, troque por `PersistentVolumeClaim`, configure secrets reais e publique imagens em um registry.
+O Secret `conexao-solidaria-secret` **não** é versionado. Copie o template, preencha
+os placeholders `<...>` e aplique. `secret.yaml` está no `.gitignore` - nunca o commite.
+
+```powershell
+Copy-Item infra/k8s/secret.example.yaml infra/k8s/secret.yaml
+# edite infra/k8s/secret.yaml preenchendo:
+#   postgres-password, jwt-secret (>= 64 chars), rabbitmq-user/password,
+#   zabbix-user/password, grafana-admin-user/password, seed-gestor-password
+kubectl apply -f infra/k8s/secret.yaml
+```
+
+## 5. Deploy (Kustomize)
+
+Validar o YAML renderizado sem aplicar:
+
+```powershell
+kubectl kustomize infra/k8s/overlays/local
+```
+
+Aplicar a stack completa:
+
+```powershell
+kubectl apply -k infra/k8s/overlays/local
+```
+
+Um único `apply -k` cria **tudo ao mesmo tempo** (o Kustomize não ordena a aplicação):
+os Jobs de migração `identity-migrations` / `campaigns-migrations` e os Deployments nascem
+juntos. A ordem correta é garantida em runtime pelo desenho de migrações abaixo.
+
+## 6. Migrações e ordem de subida
+
+O schema é criado por **EF Migrations** (não `EnsureCreated`), aplicado por **Jobs
+dedicados**, e não pelos apps no boot:
+
+- **Jobs `identity-migrations` e `campaigns-migrations`** (`infra/k8s/base/migrations-job.yaml`)
+  rodam a app com `RunMigrationsOnly=true`: aplicam as migrations pendentes e encerram com
+  exit 0 (não servem HTTP, não consomem fila). Um único Job de campaigns cobre o schema do
+  `campaignsdb` compartilhado por Campaigns.Api e Donations.Worker (mesmo `CampaignsDbContext`,
+  AD-23).
+- **Deployments** (`identity-api`, `campaigns-api`, `donations-worker`) sobem com
+  `Migrations__RunOnStartup=false`: **não** migram no boot (evita a corrida de `MigrateAsync`
+  entre réplicas) e apenas **aguardam** o schema já existir antes de servir tráfego.
+
+Para garantir a ordem, aplique os Jobs primeiro e aguarde a conclusão, depois a stack:
+
+```powershell
+kubectl apply -f infra/k8s/base/migrations-job.yaml -n conexao-solidaria
+kubectl wait --for=condition=complete --timeout=180s `
+  job/identity-migrations job/campaigns-migrations -n conexao-solidaria
+kubectl apply -k infra/k8s/overlays/local
+```
+
+Os Jobs são **idempotentes** (EF só aplica migrations pendentes) e têm
+`ttlSecondsAfterFinished: 300` (somem 5 min após concluir); reaplicar a stack é seguro.
+
+### Resultado observado (deploy validado ao vivo)
+
+Após a carga das imagens + Secret + `apply -k` no Docker Desktop k8s v1.36.1:
+
+- **12 pods Running 1/1**: `postgres`, `rabbitmq`, `elasticsearch`, `identity-api`,
+  `campaigns-api`, `donations-worker`, `gateway`, `web`, `prometheus`, `grafana`,
+  `zabbix-server`, `zabbix-web`.
+- Jobs de migração em **`Complete`** (`identity-migrations`, `campaigns-migrations`).
+- E2E de doação processada **em ~3s** (POST 202 → outbox → fila `doacoes-recebidas` →
+  Worker → `campaigns.ValorTotalArrecadado` + read model `campaign_stats`).
+- Read model `campaign_stats` **populado**; consumer de notificações do Web **conectado**
+  ao fanout `conexao-solidaria.notifications` (tempo real via SignalR).
+
+```powershell
+kubectl get pods,svc -n conexao-solidaria
+kubectl get jobs -n conexao-solidaria
+```
+
+### Alternativa: smoke test automatizado
+
+`infra/k8s/smoke.ps1` valida o overlay, checa a existência do Secret, faz `apply -k`,
+aguarda o rollout de todos os StatefulSets/Deployments e imprime pods e services:
+
+```powershell
+pwsh infra/k8s/smoke.ps1
+```
+
+## 7. Troubleshooting do deploy (achados reais)
+
+Além do troubleshooting genérico (seção 12), estes três pontos foram **encontrados e
+tratados** durante o deploy ao vivo:
+
+### (a) NetworkPolicy tem de liberar os Jobs de migração → Postgres
+
+Com o `default-deny-ingress`, o Postgres só aceita quem estiver na allow-list. Os Jobs de
+migração usam os labels `app=identity-migrations` e `app=campaigns-migrations` (**diferentes**
+dos deployments); sem incluí-los, os Jobs **não** conectam ao Postgres e o **schema não
+nasce** - os deployments então entram em espera/CrashLoop indefinidamente.
+
+**Já corrigido no repo:** a policy `allow-to-postgres`
+(`infra/k8s/base/network-policies.yaml`) inclui `app=identity-migrations` e
+`app=campaigns-migrations` na porta 5432. Se os Jobs travarem conectando ao banco, confirme
+esses seletores:
+
+```powershell
+kubectl logs -n conexao-solidaria job/campaigns-migrations
+kubectl describe networkpolicy allow-to-postgres -n conexao-solidaria
+```
+
+### (b) Loop de espera de schema é curto (~30s) → risco de CrashLoop
+
+Os apps que não migram (Worker, e as APIs) esperam o schema ficar pronto num loop de
+**10 tentativas × 3s (~30s)** (ex.: `WorkerDatabaseInitializer` consulta uma tabela real
+dentro de try/catch e retenta enquanto o schema não existe). Se o Postgres ainda estiver
+inicializando o volume, ou o Job de migração demorar mais que isso, o app esgota as
+tentativas e pode entrar em **CrashLoopBackOff**.
+
+**Mitigação imediata (local):** depois que os Jobs de migração estiverem `Complete`,
+reinicie os deployments para que reentrem no loop com o schema já pronto:
+
+```powershell
+kubectl wait --for=condition=complete --timeout=180s `
+  job/identity-migrations job/campaigns-migrations -n conexao-solidaria
+kubectl rollout restart deployment/identity-api deployment/campaigns-api deployment/donations-worker -n conexao-solidaria
+kubectl rollout status  deployment/campaigns-api -n conexao-solidaria
+```
+
+**Recomendação para produção:** substituir o loop por um **initContainer** que bloqueia o
+start do app até a migração concluir (ex.: `kubectl wait` num sidecar de bootstrap, ou um
+init que sonda `__EFMigrationsHistory`), tornando a dependência explícita em vez de
+best-effort com timeout. Fica como TODO (seção 11).
+
+### (c) kubeconfig do docker-desktop com CA desatualizada
+
+Veja a caixa na seção 1: `kubectl config set-cluster docker-desktop --insecure-skip-tls-verify=true`
+(**apenas local**).
+
+## 8. Acesso na demo
+
+### Entrada única: Ingress (recomendado)
+
+Todo tráfego externo passa pelo **Ingress** (`host: conexao-solidaria.local`):
+
+| Recurso | URL |
+| --- | --- |
+| App (Web/Blazor) | `http://conexao-solidaria.local/` |
+| API (Gateway/YARP) | `http://conexao-solidaria.local/api/...` |
+
+Requer o nginx ingress controller e `conexao-solidaria.local -> 127.0.0.1` no `hosts`.
+
+### Fallback NodePort (sem ingress controller)
+
+O overlay `local` também expõe NodePort:
+
+| Recurso | URL |
+| --- | --- |
+| Web | http://localhost:30088 |
+| Gateway (API) | http://localhost:30080/api/... |
+
+### port-forward (serviços internos ClusterIP)
+
+Postgres, RabbitMQ, Elasticsearch, Prometheus, Grafana, Zabbix - e também Web/Gateway,
+quando não há ingress - ficam **ClusterIP**. Acesse via `port-forward` (que **não** passa
+pelas NetworkPolicies). Os Services expõem a porta **80**; os pods escutam 8080:
+
+```powershell
+kubectl port-forward -n conexao-solidaria svc/web        8080:80      # App (Blazor)
+kubectl port-forward -n conexao-solidaria svc/gateway   18080:80      # API (YARP)
+kubectl port-forward -n conexao-solidaria svc/grafana    3000:3000    # Grafana
+kubectl port-forward -n conexao-solidaria svc/prometheus 9090:9090    # Prometheus
+kubectl port-forward -n conexao-solidaria svc/rabbitmq  15672:15672   # RabbitMQ Management
+kubectl port-forward -n conexao-solidaria svc/zabbix-web 8085:8080    # Zabbix Web
+kubectl port-forward -n conexao-solidaria svc/elasticsearch 9200:9200 # Elasticsearch
+```
+
+Credenciais vêm do Secret (`grafana-admin-user/password`, `rabbitmq-user/password`,
+`zabbix-user` = `Admin` + `zabbix-password`). O gestor semeado pela Identity é
+`gestor@conexaosolidaria.local` com a senha `seed-gestor-password`. Nunca commite valores
+reais - veja `SECURITY.md`.
+
+## 9. Hardening aplicado
+
+Resumo do que a base entrega (detalhes e IDs em `infra/k8s/README.md` e
+`docs/decisoes-arquiteturais.md` AD-19):
+
+- **Persistência (#K8S-003):** Postgres e RabbitMQ são `StatefulSet` com
+  `volumeClaimTemplates` (PVC por réplica: Postgres 5Gi, RabbitMQ 2Gi); Elasticsearch é
+  `Deployment` + PVC dedicado (3Gi, `strategy: Recreate`). Os PVCs **sobrevivem** a delete
+  dos pods; `kubectl delete -k` **não** remove PVCs de `volumeClaimTemplates` (proposital).
+  Prometheus/Grafana usam armazenamento efêmero (reprovisionados por ConfigMap).
+- **Rede (#K8S-004/005):** **tudo ClusterIP**; entrada externa única = **Ingress nginx**
+  (`/api -> gateway`, `/ -> web`). Sticky cookie de afinidade para os circuitos do Blazor
+  Server. NodePort só no overlay local, como fallback.
+- **Probes (#K8S-006):** `startupProbe` em `/alive` (tolera boot + espera de schema),
+  `readinessProbe` em `/health` (reflete dependências), `livenessProbe` em `/alive` (**não**
+  depende de DB/RabbitMQ, evita reinício em cascata). Postgres/RabbitMQ usam probes `exec`.
+- **Recursos:** `requests`/`limits` em todos os pods.
+- **securityContext (#K8S-008):** nos containers .NET e nos Jobs de migração: `runAsNonRoot`,
+  `runAsUser 10001`, `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true`,
+  `capabilities.drop: [ALL]`, `seccompProfile: RuntimeDefault`, `emptyDir` em `/tmp` (o Web
+  grava Data Protection keys em `/tmp/keys`). Imagens de infra recebem apenas `fsGroup`.
+- **NetworkPolicy (#K8S-009):** `default-deny-ingress` + allow-list explícita
+  (Gateway<-Web/ingress, APIs<-Gateway/Prometheus/Zabbix,
+  Postgres<-APIs/Worker/**migrations**/Zabbix, RabbitMQ<-Campaigns/Worker/**Web**,
+  ES<-Campaigns, Prometheus<-Grafana, etc.). Egresso permanece aberto (hardening de egress
+  é TODO).
+- **HPA (#K8S-010):** por CPU (70%) em `gateway`, `identity-api`, `campaigns-api`
+  (min 1, max 5). Requer metrics-server.
+- **PDB (#K8S-011):** `minAvailable: 1` nos stateless que escalam; `maxUnavailable: 1` nos
+  de réplica única (`web`, `donations-worker`) para não bloquear drains.
+
+## 10. Rebuild após alterar código
+
+Rebuild → **reimportar no node** (passo 3) → reiniciar o deployment:
+
+```powershell
+docker build -f src/ConexaoSolidaria.Campaigns.Api/Dockerfile -t conexao-solidaria/campaigns-api:local .
+docker save conexao-solidaria/campaigns-api:local | docker exec -i desktop-control-plane ctr -n k8s.io images import -
+kubectl rollout restart deployment/campaigns-api -n conexao-solidaria
+kubectl rollout status  deployment/campaigns-api -n conexao-solidaria
+```
+
+> Esquecer o `ctr images import` é a causa nº 1 de "meu fix não subiu": o pod reinicia com a
+> imagem antiga que ainda está no `containerd` do node.
+
+## 11. TODO / limitações conscientes
+
+- **initContainer de migração:** trocar o loop de espera de schema (~30s) por um
+  initContainer que bloqueia o start até a migração concluir (dependência explícita).
+- **KEDA:** o `donations-worker` deveria escalar pela **profundidade da fila** do RabbitMQ
+  (`ScaledObject` com trigger `rabbitmq`). Hoje só há HPA por CPU nos stateless. Fica como
+  TODO até o KEDA estar disponível no cluster.
+- **Web em multi-réplica:** mantido em `replicas: 1`. Blazor Server usa circuitos SignalR
+  (estado por conexão) e guarda o JWT via `ProtectedLocalStorage` (Data Protection).
+  Escalar exige (1) Data Protection keys em volume **RWX** compartilhado
+  (`DataProtection__KeysPath`) e (2) sticky sessions no Ingress (já anotado em `ingress.yaml`).
+- **Hardening de egresso** nas NetworkPolicies (default-deny egress + allow-dns).
+
+## 12. Troubleshooting geral
+
+- **Contexto errado:** `kubectl config use-context docker-desktop`.
+- **`ErrImageNeverPull` / `ImagePullBackOff`:** a imagem `:local` não foi importada no node -
+  refaça o passo 3 (`ctr images import`) e confirme com
+  `docker exec desktop-control-plane ctr -n k8s.io images ls`.
+- **Pod em CrashLoopBackOff:** `kubectl logs deployment/<nome> -n conexao-solidaria` e
+  `kubectl describe pod <pod> -n conexao-solidaria`. Se for API/Worker no boot, quase sempre
+  é espera de schema (seção 7b) - confirme os Jobs de migração `Complete` e faça
+  `rollout restart`.
+- **Jobs de migração parados/`0/1`:** veja `kubectl logs job/campaigns-migrations`; erro de
+  conexão ao Postgres normalmente é NetworkPolicy (seção 7a).
+- **Remover PVC antigo incompatível:** se o volume veio de uma versão criada por
+  `EnsureCreated` (sem `__EFMigrationsHistory`), as migrations falham; recrie o PVC do
+  Postgres (`kubectl delete pvc -n conexao-solidaria -l app=postgres`). Ver AD-11.
+- **HPA sem métricas (`<unknown>`):** metrics-server não instalado.
+- **Ingress não responde:** confirme o nginx ingress controller e a entrada no `hosts`;
+  ou use o fallback NodePort (30088 / 30080).
+- **Elasticsearch não sobe:** confira memória do Docker Desktop; o overlay local já reduz o
+  ES (`ES_JAVA_OPTS=-Xms256m -Xmx256m`).
+
+## 13. Remover
+
+```powershell
+kubectl delete -k infra/k8s/overlays/local
+```
+
+Os PVCs de Postgres/RabbitMQ **não** são removidos por padrão (evita perda acidental).
+Para apagar dados e o namespace:
+
+```powershell
+kubectl delete pvc -n conexao-solidaria --all
+kubectl delete namespace conexao-solidaria
+```

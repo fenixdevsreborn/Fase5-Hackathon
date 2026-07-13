@@ -1,0 +1,162 @@
+@page "/entrar"
+@using System.ComponentModel.DataAnnotations
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+<PageTitle>Entrar</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraSmall" Class="pa-0">
+    <MudPaper Elevation="0" Class="pa-6 mt-4" Style="border:1px solid var(--mud-palette-lines-default);border-radius:16px;">
+        <div class="d-flex align-center mb-1">
+            <MudIcon Icon="@Icons.Material.Filled.Login" Color="Color.Primary" Class="mr-2" />
+            <MudText Typo="Typo.h5">Entrar</MudText>
+        </div>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            Acesse sua conta para doar e acompanhar suas contribuicoes.
+        </MudText>
+
+        <MudForm @ref="_form">
+            <MudTextField T="string"
+                          @bind-Value="_email"
+                          Label="E-mail"
+                          Variant="Variant.Outlined"
+                          InputType="InputType.Email"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Email"
+                          Required="true"
+                          RequiredError="Informe seu e-mail."
+                          Validation="@(new Func<string, string?>(ValidarEmail))"
+                          Immediate="false"
+                          Class="mb-3" />
+
+            <MudTextField T="string"
+                          @bind-Value="_senha"
+                          Label="Senha"
+                          Variant="Variant.Outlined"
+                          InputType="@(_mostrarSenha ? InputType.Text : InputType.Password)"
+                          Adornment="Adornment.End"
+                          AdornmentIcon="@(_mostrarSenha ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                          OnAdornmentClick="@(() => _mostrarSenha = !_mostrarSenha)"
+                          AdornmentAriaLabel="Mostrar ou ocultar senha"
+                          Required="true"
+                          RequiredError="Informe sua senha."
+                          OnKeyDown="OnKeyDown" />
+
+            @if (_erro)
+            {
+                <div @key="_shakeKey" class="cs-shake mt-3">
+                    <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Dense="true">
+                        Credenciais invalidas. Verifique o e-mail e a senha.
+                    </MudAlert>
+                </div>
+            }
+
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       FullWidth="true"
+                       Class="mt-4"
+                       Size="Size.Large"
+                       OnClick="EntrarAsync"
+                       Disabled="_enviando">
+                @if (_enviando)
+                {
+                    <MudProgressCircular Class="mr-2" Size="Size.Small" Indeterminate="true" />
+                    <span>Entrando...</span>
+                }
+                else
+                {
+                    <span>Entrar</span>
+                }
+            </MudButton>
+        </MudForm>
+
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.body2" Align="Align.Center" Color="Color.Secondary">
+            Ainda nao tem conta?
+            <MudLink Href="@CadastrarHref">Cadastre-se</MudLink>
+        </MudText>
+    </MudPaper>
+</MudContainer>
+
+<style>
+    .cs-shake { animation: cs-shake 380ms cubic-bezier(.36,.07,.19,.97) both; }
+    @@keyframes cs-shake {
+        10%, 90% { transform: translateX(-1px); }
+        20%, 80% { transform: translateX(2px); }
+        30%, 50%, 70% { transform: translateX(-4px); }
+        40%, 60% { transform: translateX(4px); }
+    }
+    @@media (prefers-reduced-motion: reduce) {
+        .cs-shake { animation: none; }
+    }
+</style>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    private MudForm _form = default!;
+    private string _email = string.Empty;
+    private string _senha = string.Empty;
+    private bool _mostrarSenha;
+    private bool _enviando;
+    private bool _erro;
+    private int _shakeKey;
+
+    private string CadastrarHref =>
+        string.IsNullOrWhiteSpace(ReturnUrl) ? "/cadastrar" : $"/cadastrar?returnUrl={Uri.EscapeDataString(ReturnUrl)}";
+
+    private static string? ValidarEmail(string email) =>
+        new EmailAddressAttribute().IsValid(email) ? null : "E-mail invalido.";
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or "NumpadEnter")
+        {
+            await EntrarAsync();
+        }
+    }
+
+    private async Task EntrarAsync()
+    {
+        _erro = false;
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        _enviando = true;
+        try
+        {
+            var result = await Auth.LoginAsync(_email.Trim(), _senha);
+            if (result is null)
+            {
+                _erro = true;
+                _shakeKey++;
+                return;
+            }
+
+            Nav.NavigateTo(Destino(result.Role), forceLoad: false);
+        }
+        finally
+        {
+            _enviando = false;
+        }
+    }
+
+    private string Destino(string role)
+    {
+        if (!string.IsNullOrWhiteSpace(ReturnUrl) && ReturnUrl.StartsWith('/'))
+        {
+            return ReturnUrl;
+        }
+
+        return role switch
+        {
+            "GestorONG" => "/gestor",
+            "Doador" => "/doador",
+            _ => "/",
+        };
+    }
+}

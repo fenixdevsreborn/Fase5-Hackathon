@@ -1,0 +1,290 @@
+@using System.Globalization
+@using ConexaoSolidaria.Contracts.Events
+@implements IDisposable
+@inject ApiClient Api
+@inject NotificationDispatcher Notifications
+
+@* Acompanhamento assincrono de uma doacao. Faz polling controlado do
+   status (Pendente -> Processada | Rejeitada) e mostra uma linha do tempo.
+   Nunca declara "concluida" apenas por ter recebido o 202: so quando o
+   backend retorna "Processada". *@
+
+<MudPaper Elevation="0" Class="cs-status pa-4" Style="border:1px solid var(--mud-palette-lines-default);border-radius:14px;position:relative;overflow:hidden;">
+    <div class="d-flex align-center mb-2">
+        <MudIcon Icon="@Icons.Material.Filled.Receipt" Class="mr-2" Color="Color.Primary" />
+        <MudText Typo="Typo.subtitle1">Acompanhamento da doacao</MudText>
+    </div>
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-1">
+        Protocolo: @DoacaoId
+    </MudText>
+    @if (_valor.HasValue && _valor.Value > 0)
+    {
+        <MudText Typo="Typo.body2" Class="mb-3">Valor: <b>@_valor.Value.ToString("C", Br)</b></MudText>
+    }
+
+    <MudTimeline TimelinePosition="TimelinePosition.Start" Class="mt-2">
+        <MudTimelineItem Color="EtapaCor(1)" Variant="Variant.Filled">
+            <MudText Typo="Typo.body2"><b>Recebida</b> — pedido de doacao registrado.</MudText>
+        </MudTimelineItem>
+        <MudTimelineItem Color="EtapaCor(2)" Variant="Variant.Filled">
+            <div class="d-flex align-center">
+                @if (_fase == Fase.Processando)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                <MudText Typo="Typo.body2"><b>Na fila / Processando</b> — validando e conciliando.</MudText>
+            </div>
+        </MudTimelineItem>
+        <MudTimelineItem Color="EtapaCor(3)" Variant="Variant.Filled">
+            @if (_fase == Fase.Rejeitada)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Error"><b>Rejeitada</b> — a doacao nao pode ser processada.</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2"><b>Concluida</b> — doacao processada com sucesso.</MudText>
+            }
+        </MudTimelineItem>
+    </MudTimeline>
+
+    @switch (_fase)
+    {
+        case Fase.Concluida:
+            <MudAlert Severity="Severity.Success" Variant="Variant.Filled" Class="mt-3">
+                Obrigado! Sua doacao foi processada com sucesso.
+            </MudAlert>
+            <div class="cs-confetti" aria-hidden="true">
+                @for (var i = 0; i < 14; i++)
+                {
+                    <span style="@ConfeteEstilo(i)"></span>
+                }
+            </div>
+            break;
+        case Fase.Rejeitada:
+            <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="mt-3">
+                Sua doacao foi rejeitada. Nenhum valor foi cobrado.
+            </MudAlert>
+            break;
+        case Fase.Erro:
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mt-3">
+                Nao foi possivel obter o status agora. Verifique mais tarde.
+                <MudButton Size="Size.Small" Class="ml-2" OnClick="ReiniciarAsync">Tentar de novo</MudButton>
+            </MudAlert>
+            break;
+        case Fase.Expirado:
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mt-3">
+                O processamento esta demorando mais que o esperado. Ele continua na fila —
+                atualize esta pagina em instantes.
+                <MudButton Size="Size.Small" Class="ml-2" OnClick="ReiniciarAsync">Atualizar</MudButton>
+            </MudAlert>
+            break;
+    }
+</MudPaper>
+
+@if (_fase == Fase.Concluida)
+{
+    <style>
+        .cs-confetti { position:absolute; inset:0; pointer-events:none; }
+        .cs-confetti span {
+            position:absolute; top:-12px; width:8px; height:8px; border-radius:2px; opacity:.9;
+            animation: cs-fall 1400ms ease-in forwards;
+        }
+        @@keyframes cs-fall {
+            0% { transform: translateY(-10px) rotate(0); opacity:1; }
+            100% { transform: translateY(180px) rotate(320deg); opacity:0; }
+        }
+        @@media (prefers-reduced-motion: reduce) {
+            .cs-confetti { display:none; }
+        }
+    </style>
+
+    @* Comprovante emitido assim que a doacao e confirmada como Processada. *@
+    <DonationReceipt DoacaoId="DoacaoId"
+                     CampanhaId="_campanhaId"
+                     Valor="@(_valor ?? 0m)"
+                     Data="_processadaEm" />
+}
+
+@code {
+    private static readonly CultureInfo Br = new("pt-BR");
+    private static readonly string[] ConfeteCores =
+        { "#23a36d", "#f4b942", "#0f7594", "#0b3b60", "#e0533d" };
+
+    private const int IntervaloMs = 1500;
+    private const int MaxTentativas = 20;
+
+    [Parameter, EditorRequired]
+    public Guid DoacaoId { get; set; }
+
+    private enum Fase { Processando, Concluida, Rejeitada, Erro, Expirado }
+
+    private Fase _fase = Fase.Processando;
+    private decimal? _valor;
+    private Guid _campanhaId;
+    private DateTimeOffset? _processadaEm;
+    private CancellationTokenSource? _cts;
+    private bool _iniciado;
+
+    protected override void OnInitialized()
+    {
+        // Tempo real: alem do polling (fallback), reagimos a notificacao empurrada pelo
+        // NotificationConsumer via o dispatcher singleton. O handler vem de outra thread.
+        Notifications.Received += OnNotificacaoRecebida;
+    }
+
+    // Chamado FORA da thread do circuito (thread do consumidor RabbitMQ). Precisa de InvokeAsync.
+    private void OnNotificacaoRecebida(DoacaoProcessadaNotification n)
+    {
+        if (n.DoacaoId != DoacaoId || _fase == Fase.Concluida)
+        {
+            return;
+        }
+
+        _ = InvokeAsync(() =>
+        {
+            // Revalida dentro do contexto de renderizacao (evita corrida com o polling).
+            if (_fase == Fase.Concluida)
+            {
+                return;
+            }
+
+            _fase = Fase.Concluida;
+            _valor = n.Valor;
+            _campanhaId = n.CampanhaId;
+            _processadaEm = n.ProcessadaEm;
+
+            // Encerra o polling: o estado ja e final, nao ha por que continuar chamando a API.
+            _cts?.Cancel();
+
+            StateHasChanged();
+        });
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Inicia apos o primeiro render para garantir circuito interativo e
+        // token de autenticacao ja disponivel (evita chamadas durante prerender).
+        if (firstRender && !_iniciado)
+        {
+            _iniciado = true;
+            await IniciarPollingAsync();
+        }
+    }
+
+    private async Task IniciarPollingAsync()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+        _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
+
+        try
+        {
+            for (var tentativa = 0; tentativa < MaxTentativas && !ct.IsCancellationRequested; tentativa++)
+            {
+                var status = await Api.StatusDoacaoAsync(DoacaoId, ct);
+
+                if (status is not null)
+                {
+                    var valorAnterior = _valor;
+                    _valor = status.ValorDoacao;
+                    _campanhaId = status.CampanhaId;
+                    if (EhFinalizado(status.Status, out var faseFinal))
+                    {
+                        _fase = faseFinal;
+                        _processadaEm = status.ProcessadaEm;
+                        await InvokeAsync(StateHasChanged);
+                        return;
+                    }
+
+                    _fase = Fase.Processando;
+
+                    // Evita re-render redundante a cada poll: so atualiza a UI quando algo
+                    // visivel muda (ex.: o valor chega). O spinner e indeterminado (CSS),
+                    // portanto continua animando sem precisar de novo render.
+                    if (_valor != valorAnterior)
+                    {
+                        await InvokeAsync(StateHasChanged);
+                    }
+                }
+
+                await Task.Delay(IntervaloMs, ct);
+            }
+
+            if (!ct.IsCancellationRequested)
+            {
+                _fase = Fase.Expirado;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Componente desmontado ou reiniciado — encerra silenciosamente.
+        }
+        catch (Exception)
+        {
+            _fase = Fase.Erro;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static bool EhFinalizado(string status, out Fase fase)
+    {
+        if (string.Equals(status, "Processada", StringComparison.OrdinalIgnoreCase))
+        {
+            fase = Fase.Concluida;
+            return true;
+        }
+
+        if (string.Equals(status, "Rejeitada", StringComparison.OrdinalIgnoreCase))
+        {
+            fase = Fase.Rejeitada;
+            return true;
+        }
+
+        fase = Fase.Processando;
+        return false;
+    }
+
+    private async Task ReiniciarAsync()
+    {
+        _fase = Fase.Processando;
+        await IniciarPollingAsync();
+    }
+
+    // Cor de cada etapa da linha do tempo conforme a fase atual.
+    private Color EtapaCor(int etapa) => etapa switch
+    {
+        1 => Color.Success, // Recebida: sempre concluida
+        2 => _fase switch
+        {
+            Fase.Concluida => Color.Success,
+            Fase.Rejeitada => Color.Error,
+            Fase.Processando => Color.Info,
+            _ => Color.Default,
+        },
+        3 => _fase switch
+        {
+            Fase.Concluida => Color.Success,
+            Fase.Rejeitada => Color.Error,
+            _ => Color.Default,
+        },
+        _ => Color.Default,
+    };
+
+    private static string ConfeteEstilo(int i)
+    {
+        var left = (i * 7 + 5) % 100;
+        var cor = ConfeteCores[i % ConfeteCores.Length];
+        var delay = (i % 5) * 60;
+        var dur = 1100 + (i % 4) * 120;
+        return $"left:{left}%;background:{cor};animation-delay:{delay}ms;animation-duration:{dur}ms;";
+    }
+
+    public void Dispose()
+    {
+        Notifications.Received -= OnNotificacaoRecebida;
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}

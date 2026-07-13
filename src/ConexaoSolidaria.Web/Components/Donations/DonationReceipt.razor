@@ -1,0 +1,135 @@
+@using System.Globalization
+@inject ApiClient Api
+@inject IJSRuntime JS
+
+@* Comprovante/recibo de uma doacao processada. Renderizado pelo DonationStatus quando a
+   doacao chega ao estado "Processada". Busca o titulo da campanha via ApiClient e o nome
+   do doador via estado de autenticacao (cascading Task<AuthenticationState>). Botao de
+   impressao chama window.print(). Formatacao de moeda/data em pt-BR. *@
+
+<MudPaper Elevation="0" Class="cs-receipt pa-6 mt-4" Style="border:1px solid var(--mud-palette-lines-default);border-radius:16px;position:relative;overflow:hidden;">
+    <div class="d-flex align-center justify-space-between mb-4">
+        <div class="d-flex align-center">
+            <MudIcon Icon="@Icons.Material.Filled.VolunteerActivism" Color="Color.Primary" Class="mr-2" Size="Size.Large" />
+            <div>
+                <MudText Typo="Typo.subtitle1" Style="line-height:1.1;"><b>Conexao Solidaria</b></MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Comprovante de doacao</MudText>
+            </div>
+        </div>
+        <MudChip T="string" Color="Color.Success" Variant="Variant.Filled" Size="Size.Small"
+                 Icon="@Icons.Material.Filled.CheckCircle" Class="cs-receipt-no-print">
+            Processada
+        </MudChip>
+    </div>
+
+    <MudDivider Class="mb-4" />
+
+    <div class="cs-receipt-value mb-4">
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">Valor doado</MudText>
+        <MudText Typo="Typo.h4" Color="Color.Primary"><b>@Valor.ToString("C", Br)</b></MudText>
+    </div>
+
+    <MudGrid Spacing="3">
+        <MudItem xs="12" sm="6">
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">Doador</MudText>
+            <MudText Typo="Typo.body1">@(_doador ?? "Doador")</MudText>
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">Campanha</MudText>
+            <MudText Typo="Typo.body1">@(_campanhaTitulo ?? "-")</MudText>
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">Data</MudText>
+            <MudText Typo="Typo.body1">@DataFormatada</MudText>
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">Protocolo da doacao</MudText>
+            <MudText Typo="Typo.body2" Style="font-family:monospace;word-break:break-all;">@DoacaoId</MudText>
+        </MudItem>
+    </MudGrid>
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.body2" Class="mb-4" Style="font-style:italic;">
+        Obrigado pela sua generosidade! Sua doacao faz diferenca real e ajuda a transformar vidas.
+        Guarde este comprovante como registro da sua contribuicao.
+    </MudText>
+
+    <div class="cs-receipt-no-print">
+        <MudButton Variant="Variant.Outlined"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Print"
+                   OnClick="ImprimirAsync">
+            Imprimir
+        </MudButton>
+    </div>
+</MudPaper>
+
+<style>
+    @@media print {
+        /* Oculta tudo, revela apenas o recibo ocupando a pagina. */
+        body * { visibility: hidden !important; }
+        .cs-receipt, .cs-receipt * { visibility: visible !important; }
+        .cs-receipt {
+            position: absolute !important;
+            inset: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            margin: 0 !important;
+        }
+        .cs-receipt-no-print { display: none !important; }
+    }
+</style>
+
+@code {
+    private static readonly CultureInfo Br = new("pt-BR");
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    [Parameter, EditorRequired]
+    public Guid DoacaoId { get; set; }
+
+    [Parameter, EditorRequired]
+    public Guid CampanhaId { get; set; }
+
+    [Parameter, EditorRequired]
+    public decimal Valor { get; set; }
+
+    /// <summary>Data em que a doacao foi processada. Se ausente, usa "agora".</summary>
+    [Parameter]
+    public DateTimeOffset? Data { get; set; }
+
+    private string? _campanhaTitulo;
+    private string? _doador;
+
+    private string DataFormatada =>
+        (Data ?? DateTimeOffset.Now).ToLocalTime().ToString("dd/MM/yyyy HH:mm", Br);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var state = await AuthState;
+            _doador = state.User.Identity?.Name;
+        }
+
+        var campanha = await Api.ObterCampanhaAsync(CampanhaId);
+        if (campanha is not null)
+        {
+            _campanhaTitulo = campanha.Titulo;
+        }
+    }
+
+    private async Task ImprimirAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("window.print");
+        }
+        catch (JSException)
+        {
+            // Ambiente sem window (ex.: prerender) — ignorado silenciosamente.
+        }
+    }
+}

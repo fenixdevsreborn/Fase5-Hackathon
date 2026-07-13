@@ -1,0 +1,171 @@
+@page "/"
+@using ConexaoSolidaria.Web.Components.Common
+@using ConexaoSolidaria.Web.Components.Campaigns
+@inject ApiClient Api
+
+<PageTitle>Conexao Solidaria - Doe com transparencia</PageTitle>
+
+@* ---------------- Hero ---------------- *@
+<MudPaper Elevation="0" Class="pa-8 pa-md-12 mb-8"
+          Style="background:linear-gradient(135deg,#0b3b60 0%,#0f7594 100%);color:#fff;border-radius:var(--radius-md);">
+    <MudGrid AlignItems="Center">
+        <MudItem xs="12" md="8">
+            <MudChip T="string" Color="Color.Warning" Variant="Variant.Filled" Size="Size.Small" Class="mb-3">
+                Transparencia de ponta a ponta
+            </MudChip>
+            <MudText Typo="Typo.h3" Style="color:#fff;font-weight:800;line-height:1.1;">
+                Pequenos gestos, grandes transformacoes.
+            </MudText>
+            <MudText Typo="Typo.h6" Style="color:rgba(255,255,255,.85);font-weight:400;" Class="mt-4">
+                A Conexao Solidaria conecta doadores a campanhas sociais com prestacao de contas
+                aberta: voce ve exatamente para onde cada real vai.
+            </MudText>
+            <div class="d-flex flex-wrap mt-6" style="gap:12px;">
+                <MudButton Href="/campanhas" Variant="Variant.Filled" Color="Color.Warning"
+                           Size="Size.Large" EndIcon="@Icons.Material.Filled.Favorite">
+                    Ver campanhas
+                </MudButton>
+                <MudButton Href="/transparencia" Variant="Variant.Outlined"
+                           Size="Size.Large" Style="color:#fff;border-color:rgba(255,255,255,.6);"
+                           EndIcon="@Icons.Material.Filled.QueryStats">
+                    Transparencia
+                </MudButton>
+            </div>
+        </MudItem>
+        <MudItem xs="12" md="4" Class="d-none d-md-flex justify-center">
+            <MudIcon Icon="@Icons.Material.Filled.Diversity3" Style="font-size:11rem;color:rgba(255,255,255,.18);" />
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@* ---------------- Numeros de impacto ---------------- *@
+<MudPaper Elevation="1" Class="pa-6 mb-10" Style="border-radius:var(--radius-md);">
+    @if (_loading)
+    {
+        <MudGrid Justify="Justify.SpaceAround">
+            @for (var i = 0; i < 3; i++)
+            {
+                <MudItem xs="12" sm="4" Class="d-flex flex-column align-center">
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="60%" Height="42px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="45%" />
+                </MudItem>
+            }
+        </MudGrid>
+    }
+    else
+    {
+        <MudGrid Justify="Justify.SpaceAround">
+            <MudItem xs="12" sm="4" Class="d-flex flex-column align-center py-2">
+                <MudText Typo="Typo.h4" Color="Color.Success" Style="font-weight:800;">
+                    <AnimatedCounter Value="_totalArrecadado" Prefix="R$ " Format="N2" />
+                </MudText>
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mt-1">Total arrecadado</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="4" Class="d-flex flex-column align-center py-2">
+                <MudText Typo="Typo.h4" Color="Color.Primary" Style="font-weight:800;">
+                    <AnimatedCounter Value="_campanhasAtivas" Format="N0" />
+                </MudText>
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mt-1">Campanhas ativas</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="4" Class="d-flex flex-column align-center py-2">
+                <MudText Typo="Typo.h4" Color="Color.Secondary" Style="font-weight:800;">
+                    <AnimatedCounter Value="_totalCampanhas" Format="N0" />
+                </MudText>
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mt-1">Campanhas no total</MudText>
+            </MudItem>
+        </MudGrid>
+    }
+</MudPaper>
+
+@* ---------------- Campanhas em destaque ---------------- *@
+<div class="d-flex justify-space-between align-center mb-4" style="gap:12px;">
+    <MudText Typo="Typo.h4" Style="font-weight:700;">Campanhas em destaque</MudText>
+    <MudButton Href="/campanhas" Variant="Variant.Text" Color="Color.Primary"
+               EndIcon="@Icons.Material.Filled.ArrowForward" Class="d-none d-sm-flex">
+        Ver todas
+    </MudButton>
+</div>
+
+@if (_loading)
+{
+    <LoadingSkeleton Count="3" />
+}
+else if (_destaques.Count == 0)
+{
+    <EmptyState Icon="@Icons.Material.Filled.Campaign"
+                Title="Nenhuma campanha ativa no momento"
+                Description="Assim que novas campanhas forem publicadas, elas aparecerao aqui." />
+}
+else
+{
+    <MudGrid>
+        @foreach (var campanha in _destaques)
+        {
+            <MudItem @key="campanha.Id" xs="12" sm="6" md="4">
+                <CampaignCard Campanha="campanha" />
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@* ---------------- Como funciona ---------------- *@
+<MudText Typo="Typo.h4" Style="font-weight:700;" Class="mt-12 mb-4">Como funciona</MudText>
+<MudGrid>
+    @foreach (var passo in _passos)
+    {
+        <MudItem xs="12" md="4">
+            <MudPaper Elevation="0" Class="pa-6"
+                      Style="height:100%;border-radius:var(--radius-md);background:var(--surface);border:1px solid rgba(11,59,96,.10);">
+                <MudAvatar Color="Color.Primary" Variant="Variant.Filled" Rounded="true" Size="Size.Large">
+                    <MudIcon Icon="@passo.Icon" />
+                </MudAvatar>
+                <MudText Typo="Typo.h6" Class="mt-3" Style="font-weight:700;">@passo.Titulo</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">@passo.Texto</MudText>
+            </MudPaper>
+        </MudItem>
+    }
+</MudGrid>
+
+@code {
+    private bool _loading = true;
+    private decimal _totalArrecadado;
+    private int _campanhasAtivas;
+    private int _totalCampanhas;
+    private IReadOnlyList<CampanhaDto> _destaques = Array.Empty<CampanhaDto>();
+
+    private readonly (string Icon, string Titulo, string Texto)[] _passos =
+    {
+        (Icons.Material.Filled.Search, "1. Escolha uma causa",
+            "Explore as campanhas ativas e encontre a que mais combina com voce."),
+        (Icons.Material.Filled.VolunteerActivism, "2. Faca sua doacao",
+            "Contribua com o valor que quiser, de forma rapida e segura."),
+        (Icons.Material.Filled.QueryStats, "3. Acompanhe o impacto",
+            "Veja em tempo real o quanto cada campanha ja arrecadou."),
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var transparencia = await Api.TransparenciaAsync();
+            var campanhas = await Api.BuscarCampanhasAsync(null, 1, 3);
+
+            _totalArrecadado = transparencia.Sum(t => t.ValorTotalArrecadado);
+            _campanhasAtivas = transparencia.Count;
+            _totalCampanhas = campanhas.Total;
+            _destaques = campanhas.Items
+                .Where(c => c.Status == "Ativa")
+                .Take(3)
+                .ToList();
+        }
+        catch
+        {
+            // Falha de rede: mantem os valores zerados e as secoes de vazio.
+            _destaques = Array.Empty<CampanhaDto>();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

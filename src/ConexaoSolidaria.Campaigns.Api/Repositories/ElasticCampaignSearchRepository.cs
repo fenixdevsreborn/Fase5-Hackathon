@@ -1,4 +1,4 @@
-using ConexaoSolidaria.Campaigns.Api.Domain;
+using ConexaoSolidaria.Shared.Domain;
 using Elastic.Clients.Elasticsearch;
 using Elastic.Clients.Elasticsearch.Core.Search;
 using Elastic.Clients.Elasticsearch.QueryDsl;

@@ -1,0 +1,77 @@
+@* Bar: arrecadado vs meta por campanha (top N por valor arrecadado). *@
+@using System.Globalization
+
+@if (_labels.Length == 0)
+{
+    <div class="d-flex align-center justify-center" style="height:350px">
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            Nenhuma campanha para comparar meta e arrecadação.
+        </MudText>
+    </div>
+}
+else
+{
+    <MudChart T="double"
+              ChartType="ChartType.Bar"
+              Width="100%"
+              Height="350px"
+              ChartSeries="_series"
+              ChartLabels="_labels"
+              ChartOptions="_options" />
+}
+
+@code {
+    private static readonly CultureInfo Br = CultureInfo.GetCultureInfo("pt-BR");
+
+    [Parameter] public IReadOnlyList<CampanhaDto> Campanhas { get; set; } = Array.Empty<CampanhaDto>();
+
+    /// <summary>Número de campanhas exibidas (as com maior arrecadação).</summary>
+    [Parameter] public int TopN { get; set; } = 6;
+
+    private string[] _labels = Array.Empty<string>();
+    private List<ChartSeries<double>> _series = new();
+
+    // Referencia dos dados ja processados: evita reprocessar o LINQ pesado e
+    // re-renderizar o grafico quando o pai renderiza sem que os dados mudem.
+    private IReadOnlyList<CampanhaDto>? _processadas;
+
+    private readonly ChartOptions _options = new()
+    {
+        ChartPalette = new[] { "#23a36d", "#0b3b60" },
+    };
+
+    protected override void OnParametersSet()
+    {
+        // Dados imutaveis apos o carregamento: so recalcula quando a referencia muda.
+        if (ReferenceEquals(_processadas, Campanhas))
+        {
+            return;
+        }
+        _processadas = Campanhas;
+
+        var top = Campanhas
+            .OrderByDescending(c => c.ValorTotalArrecadado)
+            .Take(TopN)
+            .ToList();
+
+        _labels = top.Select(c => Encurtar(c.Titulo)).ToArray();
+
+        if (top.Count == 0)
+        {
+            _series = new List<ChartSeries<double>>();
+            return;
+        }
+
+        var arrecadado = top.Select(c => (double)c.ValorTotalArrecadado).ToArray();
+        var meta = top.Select(c => (double)c.MetaFinanceira).ToArray();
+
+        _series = new List<ChartSeries<double>>
+        {
+            new() { Name = "Arrecadado", Data = arrecadado },
+            new() { Name = "Meta", Data = meta },
+        };
+    }
+
+    private static string Encurtar(string titulo) =>
+        string.IsNullOrEmpty(titulo) || titulo.Length <= 16 ? titulo : titulo[..15] + "…";
+}
