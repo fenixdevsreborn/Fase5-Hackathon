@@ -5,6 +5,8 @@ namespace ConexaoSolidaria.Campaigns.Api.Data;
 
 public sealed class CampaignsDbContext(DbContextOptions<CampaignsDbContext> options) : DbContext(options)
 {
+    public const string CampaignBusinessKeyIndexName = "ux_campaigns_titulo_data_inicio_data_fim_status";
+
     public DbSet<Campaign> Campaigns => Set<Campaign>();
 
     public DbSet<Donation> Donations => Set<Donation>();
@@ -23,6 +25,16 @@ public sealed class CampaignsDbContext(DbContextOptions<CampaignsDbContext> opti
             entity.Property(campaign => campaign.DataInicio).IsRequired();
             entity.Property(campaign => campaign.DataFim).IsRequired();
             entity.Property(campaign => campaign.CriadaEm).IsRequired();
+
+            entity.HasIndex(campaign => new
+                {
+                    campaign.Titulo,
+                    campaign.DataInicio,
+                    campaign.DataFim,
+                    campaign.Status
+                })
+                .IsUnique()
+                .HasDatabaseName(CampaignBusinessKeyIndexName);
         });
 
         modelBuilder.Entity<Donation>(entity =>

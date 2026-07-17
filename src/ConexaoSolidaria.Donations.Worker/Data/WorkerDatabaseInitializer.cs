@@ -4,6 +4,10 @@ namespace ConexaoSolidaria.Donations.Worker.Data;
 
 public static class WorkerDatabaseInitializer
 {
+    private const string CampaignBusinessKeyIndexSql =
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_campaigns_titulo_data_inicio_data_fim_status " +
+        "ON campaigns (\"Titulo\", \"DataInicio\", \"DataFim\", \"Status\");";
+
     public static async Task InitializeAsync(IServiceProvider services)
     {
         await using var scope = services.CreateAsyncScope();
@@ -15,6 +19,7 @@ public static class WorkerDatabaseInitializer
             try
             {
                 await db.Database.EnsureCreatedAsync();
+                await db.Database.ExecuteSqlRawAsync(CampaignBusinessKeyIndexSql);
                 return;
             }
             catch (Exception ex) when (attempt < 10)

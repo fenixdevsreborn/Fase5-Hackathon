@@ -56,15 +56,16 @@ Credenciais uteis:
 
 | Tempo | Bloco |
 | --- | --- |
-| 0:00 - 0:45 | Abertura e contexto do problema |
-| 0:45 - 2:30 | Arquitetura |
-| 2:30 - 3:45 | Pipeline CI/CD |
-| 3:45 - 5:15 | Kubernetes e pods rodando |
-| 5:15 - 6:45 | Observabilidade |
-| 6:45 - 12:30 | Fluxo funcional completo |
-| 12:30 - 13:30 | Regra de doacao rejeitada |
-| 13:30 - 14:20 | Requisitos opcionais |
-| 14:20 - 15:00 | Encerramento |
+| 0:00 - 0:45 | Abertura e contexto do problema | - Sales/Farias
+| 0:45 - 2:30 | Arquitetura | - Soares
+| 2:30 - 3:45 | Pipeline CI/CD | - Sales/Adriano
+| 3:45 - 5:15 | Kubernetes e pods rodando | - Adriano
+| 5:15 - 6:45 | Observabilidade | - Farias
+| 6:45 - 12:30 | Fluxo funcional completo | - Adriano
+| 12:30 - 13:30 | Regra de doacao rejeitada | - Soares
+| 13:30 - 14:20 | Requisitos opcionais | - Junnon (teste unitário/api gateway/front)
+| 14:20 - 15:00 | Encerramento | - Junnon
+
 
 ## 1. Abertura
 

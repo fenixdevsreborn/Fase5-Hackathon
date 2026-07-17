@@ -7,6 +7,7 @@ using ConexaoSolidaria.Shared.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace ConexaoSolidaria.Campaigns.Api.Controllers;
 
@@ -24,6 +25,7 @@ public sealed class CampanhasController(CampaignsDbContext db, ICampaignSearchSe
 
     [HttpPost]
     [Authorize(Roles = ApplicationRoles.GestorOng)]
+    [ProducesResponseType<CampanhaResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<CampanhaResponse>(StatusCodes.Status201Created)]
     public async Task<ActionResult<CampanhaResponse>> Criar(
         SalvarCampanhaRequest request,
@@ -40,8 +42,32 @@ public sealed class CampanhasController(CampaignsDbContext db, ICampaignSearchSe
                 request.Status,
                 DateTimeOffset.UtcNow);
 
+            var existingCampaign = await FindCampaignByBusinessKeyAsync(campaign, cancellationToken);
+            if (existingCampaign is not null)
+            {
+                await campaignSearchService.IndexAsync(existingCampaign, cancellationToken);
+                return Ok(ToResponse(existingCampaign));
+            }
+
             db.Campaigns.Add(campaign);
-            await db.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException ex) when (IsCampaignBusinessKeyViolation(ex))
+            {
+                db.Entry(campaign).State = EntityState.Detached;
+
+                var persistedCampaign = await FindCampaignByBusinessKeyAsync(campaign, cancellationToken);
+                if (persistedCampaign is null)
+                {
+                    throw;
+                }
+
+                await campaignSearchService.IndexAsync(persistedCampaign, cancellationToken);
+                return Ok(ToResponse(persistedCampaign));
+            }
+
             await campaignSearchService.IndexAsync(campaign, cancellationToken);
 
             return CreatedAtAction(nameof(ObterPorId), new { id = campaign.Id }, ToResponse(campaign));
@@ -241,5 +267,27 @@ public sealed class CampanhasController(CampaignsDbContext db, ICampaignSearchSe
             campaign.MetaFinanceira,
             campaign.ValorTotalArrecadado,
             campaign.Status);
+    }
+
+    private async Task<Campaign?> FindCampaignByBusinessKeyAsync(
+        Campaign campaign,
+        CancellationToken cancellationToken)
+    {
+        return await db.Campaigns
+            .AsNoTracking()
+            .Where(item =>
+                item.Titulo == campaign.Titulo &&
+                item.DataInicio == campaign.DataInicio &&
+                item.DataFim == campaign.DataFim &&
+                item.Status == campaign.Status)
+            .OrderBy(item => item.CriadaEm)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private static bool IsCampaignBusinessKeyViolation(DbUpdateException exception)
+    {
+        return exception.InnerException is PostgresException postgresException &&
+            postgresException.SqlState == PostgresErrorCodes.UniqueViolation &&
+            postgresException.ConstraintName == CampaignsDbContext.CampaignBusinessKeyIndexName;
     }
 }
