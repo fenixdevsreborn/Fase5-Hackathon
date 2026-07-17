@@ -2,47 +2,43 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: clamp(20px, 2.25vw, 38px);
+    gap: 12px;
 }
 
-.cs-nav a {
+/* ::deep e obrigatorio aqui: os itens NavLink sao componentes filhos e NAO recebem o
+   atributo de escopo do CSS isolado. Sem ::deep, so as ancoras <a> simples seriam
+   estilizadas, deixando os NavLink (Inicio, Campanhas, Transparencia) com aparencia
+   diferente (peso/cor). Com ::deep todos os links ficam identicos. */
+.cs-nav ::deep a {
     position: relative;
-    padding: 27px 0 25px;
-    color: #111827;
-    font-size: .98rem;
+    padding: 8px 18px;
+    color: #4b5563;
+    font-size: .95rem;
     font-weight: 600;
-    line-height: 1;
+    line-height: 1.4;
     text-decoration: none;
     white-space: nowrap;
-    transition: color .22s ease, transform .22s ease;
-}
-
-.cs-nav a::after {
-    content: "";
-    position: absolute;
-    bottom: 0;
-    left: 50%;
-    height: 3px;
     border-radius: 99px;
-    background: linear-gradient(90deg, var(--cs-blue), var(--cs-orange));
-    width: 26px;
-    transform: translateX(-50%) scaleX(0);
-    transform-origin: center;
-    transition: transform .2s ease;
+    transition: color .22s ease, background-color .22s ease, box-shadow .22s ease, transform .22s ease;
 }
 
-.cs-nav a:hover,
-.cs-nav a.active {
+.cs-nav ::deep a:hover {
     color: var(--cs-blue);
-    transform: translateY(-1px);
+    background-color: rgba(37, 99, 235, 0.07);
 }
 
-.cs-nav a:hover::after,
-.cs-nav a.active::after {
-    transform: translateX(-50%) scaleX(1);
+.cs-nav ::deep a.active {
+    color: #fff;
+    background: linear-gradient(135deg, #0875fa, #075de4);
+    box-shadow: 0 6px 16px rgba(8, 101, 235, 0.22);
 }
 
-.cs-nav__private {
+.cs-nav ::deep a.active:hover {
+    color: #fff;
+    background: linear-gradient(135deg, #075de7, #064fc5);
+}
+
+.cs-nav ::deep .cs-nav__private {
     display: none;
 }
 
@@ -50,36 +46,45 @@
     width: 100%;
     align-items: stretch;
     flex-direction: column;
-    gap: 0;
+    gap: 6px;
+    padding: 12px 0;
 }
 
-.cs-nav--mobile a {
-    padding: 14px 4px;
-    border-bottom: 1px solid rgba(12, 37, 75, .07);
+.cs-nav--mobile ::deep a {
+    padding: 12px 16px;
+    border-radius: 12px;
     font-size: 1rem;
+    border-bottom: 0;
 }
 
-.cs-nav--mobile a:hover,
-.cs-nav--mobile a.active {
-    padding-left: 12px;
+.cs-nav--mobile ::deep a:hover {
+    background-color: rgba(37, 99, 235, 0.05);
+    padding-left: 20px;
     transform: none;
 }
 
-.cs-nav--mobile a::after {
-    display: none;
+.cs-nav--mobile ::deep a.active {
+    box-shadow: 0 4px 12px rgba(8, 101, 235, 0.15);
 }
 
-.cs-nav--mobile .cs-nav__private {
+.cs-nav--mobile ::deep .cs-nav__private {
     display: block;
     color: var(--cs-blue);
+    background-color: rgba(37, 99, 235, 0.03);
+    border: 1px dashed rgba(37, 99, 235, 0.15);
+}
+
+.cs-nav--mobile ::deep .cs-nav__private:hover {
+    background-color: rgba(37, 99, 235, 0.08);
 }
 
 @media (max-width: 1120px) {
     .cs-nav:not(.cs-nav--mobile) {
-        gap: 20px;
+        gap: 6px;
     }
 
-    .cs-nav:not(.cs-nav--mobile) a {
-        font-size: .9rem;
+    .cs-nav:not(.cs-nav--mobile) ::deep a {
+        font-size: .88rem;
+        padding: 7px 14px;
     }
 }

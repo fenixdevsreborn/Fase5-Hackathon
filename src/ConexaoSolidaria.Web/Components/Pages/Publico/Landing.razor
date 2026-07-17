@@ -4,7 +4,7 @@
 @using ConexaoSolidaria.Web.Components.Campaigns
 @inject ApiClient Api
 
-<PageTitle>Conexao Solidaria - Doe com transparencia</PageTitle>
+<PageTitle>Conexão Solidária - Doe com transparência</PageTitle>
 
 @* ---------------- Hero ---------------- *@
 <section class="cs-hero" aria-labelledby="hero-title">
@@ -20,7 +20,7 @@
         </h1>
 
         <p class="cs-hero__lead">
-            Uma plataforma segura e transparente para doacoes, campanhas e projetos
+            Uma plataforma segura e transparente para doações, campanhas e projetos
             que transformam vidas e fortalecem comunidades.
         </p>
 
@@ -42,7 +42,7 @@
             </span>
             <span class="cs-hero__trust-item">
                 <MudIcon Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" />
-                Transparencia
+                Transparência
             </span>
             <span class="cs-hero__trust-item">
                 <MudIcon Icon="@Icons.Material.Filled.Groups" Size="Size.Small" />
@@ -128,7 +128,7 @@
 </section>
 
 @* ---------------- Numeros de impacto ---------------- *@
-<section id="impacto" class="cs-impact-strip" aria-label="Numeros de impacto">
+<section id="impacto" class="cs-impact-strip" aria-label="Números de impacto">
     @if (_loading)
     {
         <MudGrid Justify="Justify.SpaceAround">
@@ -187,7 +187,7 @@ else if (_destaques.Count == 0)
 {
     <EmptyState Icon="@Icons.Material.Filled.Campaign"
                 Title="Nenhuma campanha ativa no momento"
-                Description="Assim que novas campanhas forem publicadas, elas aparecerao aqui." />
+                Description="Assim que novas campanhas forem publicadas, elas aparecerão aqui." />
 }
 else
 {
@@ -229,8 +229,8 @@ else
 <section id="instituicoes" class="cs-institutions" aria-labelledby="instituicoes-title">
     <div class="cs-institutions__content">
         <span class="cs-section__eyebrow">Para quem faz acontecer</span>
-        <h2 id="instituicoes-title">Sua instituicao pode ampliar o impacto.</h2>
-        <p>Crie campanhas, acompanhe resultados e mostre cada etapa da arrecadacao com transparencia.</p>
+        <h2 id="instituicoes-title">Sua instituição pode ampliar o impacto.</h2>
+        <p>Crie campanhas, acompanhe resultados e mostre cada etapa da arrecadação com transparência.</p>
         <a class="cs-hero__btn cs-hero__btn--ghost" href="/cadastrar">
             <MudIcon Icon="@Icons.Material.Filled.AddBusiness" Size="Size.Small" />
             Criar campanha
@@ -238,14 +238,14 @@ else
     </div>
     <div class="cs-institutions__visual" aria-hidden="true">
         <MudIcon Icon="@Icons.Material.Filled.VolunteerActivism" />
-        <span>Conexoes que geram impacto real</span>
+        <span>Conexões que geram impacto real</span>
     </div>
 </section>
 
 <section id="sobre" class="cs-about" aria-labelledby="sobre-title">
-    <span class="cs-section__eyebrow">Conexao Solidaria</span>
-    <h2 id="sobre-title">Tecnologia a servico da solidariedade.</h2>
-    <p>Aproximamos quem quer ajudar de projetos confiaveis, com seguranca e visibilidade sobre cada contribuicao.</p>
+    <span class="cs-section__eyebrow">Conexão Solidária</span>
+    <h2 id="sobre-title">Tecnologia a serviço da solidariedade.</h2>
+    <p>Aproximamos quem quer ajudar de projetos confiáveis, com segurança e visibilidade sobre cada contribuição.</p>
 </section>
 
 @code {
@@ -314,11 +314,11 @@ else
     private readonly (string Icon, string Titulo, string Texto)[] _passos =
     {
         (Icons.Material.Filled.Search, "1. Escolha uma causa",
-            "Explore as campanhas ativas e encontre a que mais combina com voce."),
-        (Icons.Material.Filled.VolunteerActivism, "2. Faca sua doacao",
-            "Contribua com o valor que quiser, de forma rapida e segura."),
+            "Explore as campanhas ativas e encontre a que mais combina com você."),
+        (Icons.Material.Filled.VolunteerActivism, "2. Faça sua doação",
+            "Contribua com o valor que quiser, de forma rápida e segura."),
         (Icons.Material.Filled.QueryStats, "3. Acompanhe o impacto",
-            "Veja em tempo real o quanto cada campanha ja arrecadou."),
+            "Veja em tempo real o quanto cada campanha já arrecadou."),
     };
 
     protected override async Task OnInitializedAsync()

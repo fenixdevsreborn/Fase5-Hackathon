@@ -1,5 +1,6 @@
 @page "/campanhas/{Id}"
 @using System.Globalization
+@using ConexaoSolidaria.Web.Components.Campaigns
 @using ConexaoSolidaria.Web.Components.Donations
 @inject ApiClient Api
 @inject NavigationManager Nav
@@ -33,14 +34,32 @@ else if (_campanha is null)
 }
 else
 {
-    <MudBreadcrumbs Items="_breadcrumbs" Class="px-0" />
+    <MudBreadcrumbs Items="_breadcrumbs" Class="px-0 pt-0 pb-3" />
+
+    <header class="cs-page-header">
+        <div class="cs-page-header__content">
+            <span class="cs-page-header__badge">
+                <MudIcon Icon="@Icons.Material.Filled.Campaign" Size="Size.Small" />
+                Campanha
+            </span>
+            <h1 class="cs-page-header__title">@_campanha.Titulo</h1>
+            <p class="cs-page-header__lead">
+                Categoria: <b>@CampaignVisuals.RotuloCategoria(_campanha.Categoria)</b> — Acompanhe os detalhes e apoie esta causa de forma transparente.
+            </p>
+        </div>
+    </header>
 
     <MudGrid Spacing="4">
         <MudItem xs="12" md="7">
-            <div class="d-flex align-center flex-wrap gap-2 mb-2">
-                <MudText Typo="Typo.h4">@_campanha.Titulo</MudText>
-                <MudChip T="string" Color="StatusCor" Variant="Variant.Filled" Size="Size.Small">@_campanha.Status</MudChip>
+            <div class="d-flex align-center flex-wrap gap-2 mb-4">
+                <MudText Typo="Typo.h5" Style="font-weight: 800; color: #071b3f;">Sobre esta campanha</MudText>
+                <MudChip T="string" Color="StatusCor" Variant="Variant.Filled" Size="Size.Small" Class="ml-2">@_campanha.Status</MudChip>
             </div>
+
+            <div class="campaign-detail__media mb-4">
+                <img src="@CampaignVisuals.ImagemDe(_campanha.Id)" alt="@_campanha.Titulo" />
+            </div>
+
             <MudText Typo="Typo.body1" Style="white-space:pre-line;" Class="mt-2">
                 @_campanha.Descricao
             </MudText>

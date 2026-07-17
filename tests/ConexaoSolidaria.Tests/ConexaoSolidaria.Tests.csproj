@@ -32,6 +32,8 @@
     <ProjectReference Include="..\..\src\ConexaoSolidaria.Donations.Worker\ConexaoSolidaria.Donations.Worker.csproj" />
     <ProjectReference Include="..\..\src\ConexaoSolidaria.Contracts\ConexaoSolidaria.Contracts.csproj" />
     <ProjectReference Include="..\..\src\ConexaoSolidaria.Shared\ConexaoSolidaria.Shared.csproj" />
+    <!-- Testes das features de IA do Web (AssistantTools, CampaignDraftService, AiOptions). -->
+    <ProjectReference Include="..\..\src\ConexaoSolidaria.Web\ConexaoSolidaria.Web.csproj" />
   </ItemGroup>
 
 </Project>

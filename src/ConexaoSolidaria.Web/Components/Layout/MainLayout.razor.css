@@ -9,11 +9,20 @@
     position: sticky;
     top: 0;
     z-index: 1200;
+    /* No topo da pagina o header e transparente (sem fundo/borda/sombra). Ao rolar, o
+       site.js adiciona a classe --scrolled e o fundo branco aparece com transicao suave. */
+    background: transparent;
+    border-bottom: 1px solid transparent;
+    box-shadow: none;
+    transition: background .3s ease, border-color .3s ease, box-shadow .3s ease, backdrop-filter .3s ease;
+    animation: cs-header-enter .55s cubic-bezier(.22, 1, .36, 1) both;
+}
+
+.cs-site-header--scrolled {
     background: rgba(255, 255, 255, 0.94);
-    border-bottom: 1px solid rgba(12, 37, 75, 0.06);
+    border-bottom-color: rgba(12, 37, 75, 0.06);
     box-shadow: 0 8px 32px rgba(18, 50, 91, 0.04);
     backdrop-filter: blur(18px);
-    animation: cs-header-enter .55s cubic-bezier(.22, 1, .36, 1) both;
 }
 
 .cs-site-header__inner {
@@ -62,71 +71,75 @@
 .cs-donate-button,
 .cs-profile-button {
     display: inline-flex;
-    min-height: 44px;
+    min-height: 40px;
     align-items: center;
     justify-content: center;
     gap: 7px;
-    padding: 0 28px;
-    border: 1.5px solid var(--cs-blue);
+    padding: 0 20px;
+    border: 1.5px solid transparent;
     border-radius: 999px;
-    background: #fff;
-    color: var(--cs-blue);
     font: inherit;
-    font-size: 0.98rem;
+    font-size: 0.92rem;
     font-weight: 700;
     text-decoration: none;
     cursor: pointer;
-    transition: color .2s ease, background .2s ease, box-shadow .2s ease, transform .2s ease;
+    transition: all .2s ease;
 }
 
 .cs-donate-button {
-    min-height: 42px;
-    padding-inline: 23px;
     border-color: transparent;
-    border-radius: 12px;
     color: #fff;
     background: linear-gradient(135deg, #1670f8 0%, #075de7 100%);
-    box-shadow: 0 9px 22px rgba(22, 112, 248, .22);
+    box-shadow: 0 8px 20px rgba(22, 112, 248, .2);
+}
+
+.cs-donate-button:hover {
+    background: linear-gradient(135deg, #075de7 0%, #064fc5 100%);
+    box-shadow: 0 12px 26px rgba(22, 112, 248, .3);
+    transform: translateY(-2px);
+    color: #fff;
 }
 
 .cs-profile-button {
-    width: 42px;
-    min-height: 42px;
+    width: 40px;
     padding: 0;
     border-color: rgba(12, 37, 75, .08);
     color: var(--cs-ink);
     background: #f4f7fc;
 }
 
-.cs-account-link {
-    border-color: transparent;
-    padding-inline: 14px;
-}
-
-.cs-account-link:hover,
-.cs-login-button:hover,
-.cs-donate-button:hover,
-.cs-profile-button:hover {
-    background: var(--cs-blue);
-    color: #fff;
-    box-shadow: 0 10px 26px rgba(23, 104, 239, .2);
-    transform: translateY(-1px);
-}
-
-.cs-donate-button:hover {
-    background: linear-gradient(135deg, #075de7 0%, #064fc5 100%);
-}
-
 .cs-profile-button:hover {
     background: #eaf1ff;
     color: var(--cs-blue);
+    border-color: rgba(37, 99, 235, 0.2);
     box-shadow: 0 8px 20px rgba(23, 104, 239, .12);
+    transform: translateY(-1px);
+}
+
+.cs-account-link {
+    background: rgba(37, 99, 235, 0.05);
+    border-color: rgba(37, 99, 235, 0.12);
+    color: var(--cs-blue);
+}
+
+.cs-account-link:hover {
+    background: rgba(37, 99, 235, 0.1);
+    border-color: rgba(37, 99, 235, 0.25);
+    color: var(--cs-blue-dark);
+    transform: translateY(-1px);
 }
 
 .cs-login-button--subtle {
-    min-height: 40px;
-    padding-inline: 20px;
-    border-color: rgba(23, 104, 239, .24);
+    border-color: rgba(196, 56, 56, 0.15);
+    background: rgba(196, 56, 56, 0.03);
+    color: var(--danger);
+}
+
+.cs-login-button--subtle:hover {
+    background: var(--danger);
+    color: #fff;
+    box-shadow: 0 8px 20px rgba(196, 56, 56, 0.2);
+    transform: translateY(-1px);
 }
 
 .cs-menu-button {

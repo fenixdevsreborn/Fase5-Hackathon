@@ -61,6 +61,14 @@ spec:
                 secretKeyRef:
                   name: conexao-solidaria-secret
                   key: rabbitmq-password
+            # IA (Assistente Solidario + criacao assistida). Chave OPCIONAL: ausente/vazia,
+            # o Web sobe normalmente e esconde as features de IA (degradacao graciosa).
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: openai-api-key
+                  optional: true
           startupProbe:
             httpGet:
               path: /alive

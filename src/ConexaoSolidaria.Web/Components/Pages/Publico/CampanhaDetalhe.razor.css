@@ -1,0 +1,15 @@
+.campaign-detail__media {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1px solid rgba(12, 37, 75, 0.08);
+    box-shadow: 0 8px 32px rgba(18, 50, 91, 0.04);
+}
+
+.campaign-detail__media img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}

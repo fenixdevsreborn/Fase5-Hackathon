@@ -1,17 +1,70 @@
 @page "/gestor/campanhas/nova"
 @using ConexaoSolidaria.Web.Components.Campaigns
+@using ConexaoSolidaria.Web.Services.Ai
 @inject ApiClient Api
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
+@inject CampaignDraftService Rascunho
 
 <PageTitle>Nova campanha</PageTitle>
 
 <AuthorizeView Roles="GestorONG">
     <Authorized>
-        <MudText Typo="Typo.h4" GutterBottom="true">Nova campanha</MudText>
-        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-            Preencha os dados da campanha. As regras finais são validadas pelo servidor.
-        </MudText>
+        <header class="cs-page-header">
+            <div class="cs-page-header__content">
+                <span class="cs-page-header__badge">
+                    <MudIcon Icon="@Icons.Material.Filled.Campaign" Size="Size.Small" />
+                    Nova causa
+                </span>
+                <h1 class="cs-page-header__title">Nova <span>Campanha</span></h1>
+                <p class="cs-page-header__lead">
+                    Preencha os dados abaixo para iniciar sua campanha. As informações finais serão validadas pela plataforma.
+                </p>
+            </div>
+        </header>
+
+        @if (Rascunho.Enabled)
+        {
+            <MudPaper Class="pa-4 mb-4" Elevation="1" Style="max-width:820px">
+                <div class="d-flex align-center mb-2" style="gap:8px">
+                    <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Color="Color.Primary" Size="Size.Small" />
+                    <MudText Typo="Typo.subtitle1">Criar com IA</MudText>
+                </div>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                    Descreva a ideia da campanha e a IA sugere título, descrição, categoria e meta.
+                    Revise e ajuste tudo antes de criar.
+                </MudText>
+                <MudTextField T="string"
+                              @bind-Value="_ideia"
+                              Placeholder="Ex.: arrecadar ração e vacinas para um abrigo com 40 cães resgatados"
+                              Lines="2"
+                              Variant="Variant.Outlined"
+                              Disabled="_gerando" />
+                <div class="d-flex justify-end mt-2">
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.AutoAwesome"
+                               OnClick="GerarRascunhoAsync"
+                               Disabled="@(_gerando || string.IsNullOrWhiteSpace(_ideia))">
+                        @if (_gerando)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            <span>Gerando...</span>
+                        }
+                        else
+                        {
+                            <span>Gerar rascunho</span>
+                        }
+                    </MudButton>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(_justificativaMeta))
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3">
+                        Meta sugerida: @_justificativaMeta
+                    </MudAlert>
+                }
+            </MudPaper>
+        }
 
         <MudPaper Class="pa-6" Elevation="1" Style="max-width:820px">
             <CampaignForm Model="_model"
@@ -29,7 +82,9 @@
 </AuthorizeView>
 
 @code {
-    private readonly SalvarCampanha _model = new(
+    // Mutavel de proposito: o CampaignForm repopula os campos quando a REFERENCIA do Model
+    // muda (ver CampaignForm.OnParametersSet) — e assim que o rascunho da IA preenche o form.
+    private SalvarCampanha _model = new(
         Titulo: string.Empty,
         Descricao: string.Empty,
         DataInicio: DateTimeOffset.Now,
@@ -39,6 +94,32 @@
         Categoria: "Saude");
 
     private string? _erro;
+    private string _ideia = string.Empty;
+    private bool _gerando;
+    private string? _justificativaMeta;
+
+    private async Task GerarRascunhoAsync()
+    {
+        _gerando = true;
+        _justificativaMeta = null;
+        try
+        {
+            var resultado = await Rascunho.GerarAsync(_ideia);
+            if (resultado is null)
+            {
+                Snackbar.Add("Não foi possível gerar o rascunho agora. Tente novamente.", Severity.Warning);
+                return;
+            }
+
+            _model = resultado.Campanha; // nova referencia -> CampaignForm repopula
+            _justificativaMeta = resultado.Justificativa;
+            Snackbar.Add("Rascunho gerado! Revise os campos antes de criar.", Severity.Success);
+        }
+        finally
+        {
+            _gerando = false;
+        }
+    }
 
     private async Task CriarAsync(SalvarCampanha dto)
     {

@@ -1,0 +1,101 @@
+@* Chat do Assistente Solidario (IA). O estado da conversa vive no AssistantChatService
+   (scoped por circuito); este componente so renderiza e faz o throttle do streaming. *@
+@using ConexaoSolidaria.Web.Services.Ai
+@implements IDisposable
+@inject AssistantChatService Chat
+
+<div class="d-flex flex-column" style="height:100%; min-height:0">
+    @* column-reverse mantem o scroll ancorado no fim durante o streaming (sem JS). *@
+    <div style="flex:1 1 auto; overflow-y:auto; display:flex; flex-direction:column-reverse; min-height:0">
+        <div class="d-flex flex-column pa-3" style="gap:10px">
+            @if (Chat.Mensagens.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="pa-2" Style="text-align:center">
+                    Ola! Sou o Assistente Solidario. Posso buscar campanhas, mostrar quanto
+                    cada uma arrecadou e consultar suas doacoes. Como posso ajudar?
+                </MudText>
+            }
+
+            @foreach (var msg in Chat.Mensagens)
+            {
+                var doUsuario = msg.Role == "user";
+                <MudPaper Elevation="0"
+                          Class="pa-3"
+                          Style="@($"max-width:85%; border-radius:14px; white-space:pre-wrap; overflow-wrap:anywhere; {(doUsuario ? "align-self:flex-end; background:var(--mud-palette-primary); color:var(--mud-palette-primary-text);" : $"align-self:flex-start; background:var(--mud-palette-background-gray); {(msg.IsError ? "color:var(--mud-palette-error);" : string.Empty)}")}")">
+                    <MudText Typo="Typo.body2" Style="color:inherit">@msg.Text</MudText>
+                </MudPaper>
+            }
+
+            @if (Chat.Ocupado && Chat.Mensagens.Count > 0 && string.IsNullOrEmpty(Chat.Mensagens[^1].Text))
+            {
+                <div class="d-flex align-center" style="gap:8px; align-self:flex-start">
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">pensando...</MudText>
+                </div>
+            }
+        </div>
+    </div>
+
+    <MudDivider />
+
+    <div class="d-flex align-center pa-2" style="gap:6px">
+        <MudTextField T="string"
+                      @bind-Value="_texto"
+                      Placeholder="Pergunte sobre campanhas ou doacoes..."
+                      Variant="Variant.Outlined"
+                      Margin="Margin.Dense"
+                      Immediate="true"
+                      Disabled="@Chat.Ocupado"
+                      OnKeyDown="OnKeyDown"
+                      Style="flex:1" />
+        <MudIconButton Icon="@Icons.Material.Filled.Send"
+                       Color="Color.Primary"
+                       Disabled="@(Chat.Ocupado || string.IsNullOrWhiteSpace(_texto))"
+                       OnClick="EnviarAsync"
+                       aria-label="Enviar mensagem" />
+    </div>
+</div>
+
+@code {
+    private readonly CancellationTokenSource _cts = new();
+    private string _texto = string.Empty;
+    private long _ultimoRender;
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await EnviarAsync();
+        }
+    }
+
+    private async Task EnviarAsync()
+    {
+        var texto = _texto;
+        if (string.IsNullOrWhiteSpace(texto) || Chat.Ocupado)
+        {
+            return;
+        }
+
+        _texto = string.Empty;
+        // Throttle de ~100ms nos chunks para nao inundar o circuito SignalR;
+        // a chamada final (Ocupado=false) sempre renderiza.
+        await Chat.EnviarAsync(texto, onUpdate: async () =>
+        {
+            var agora = Environment.TickCount64;
+            if (Chat.Ocupado && agora - _ultimoRender < 100)
+            {
+                return;
+            }
+
+            _ultimoRender = agora;
+            await InvokeAsync(StateHasChanged);
+        }, _cts.Token);
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

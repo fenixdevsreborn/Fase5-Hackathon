@@ -21,8 +21,9 @@ images:
     newTag: local
   - name: conexao-solidaria/gateway
     newTag: local
+  # catv8: acentuacao completa da landing (hero, secoes, passos) e do footer.
   - name: conexao-solidaria/web
-    newTag: catv3
+    newTag: catv8
 
 # Ajustes especificos do ambiente local (Docker Desktop):
 #  - expoe Gateway e Web via NodePort (fallback sem nginx ingress controller);

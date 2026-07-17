@@ -96,15 +96,60 @@ Sem ingress controller, o overlay `local` tambem expoe **NodePort** como fallbac
 - Gateway (API): http://localhost:30080/api/...
 
 Os servicos internos ficam **ClusterIP** e sao acessados na demo via
-`kubectl port-forward` (o port-forward nao passa por NetworkPolicy):
+`kubectl port-forward` (o port-forward nao passa por NetworkPolicy, entao a demo
+funciona mesmo com o `default-deny-ingress`):
 
 ```powershell
-kubectl port-forward -n conexao-solidaria svc/grafana       3000:3000   # Grafana
-kubectl port-forward -n conexao-solidaria svc/prometheus     9090:9090   # Prometheus
-kubectl port-forward -n conexao-solidaria svc/rabbitmq      15672:15672  # RabbitMQ management
-kubectl port-forward -n conexao-solidaria svc/zabbix-web     8085:8080   # Zabbix
-kubectl port-forward -n conexao-solidaria svc/elasticsearch  9200:9200   # Elasticsearch
+# App e API (uso geral / Postman)
+kubectl port-forward -n conexao-solidaria svc/web           18088:80    # App (Blazor): http://localhost:18088
+kubectl port-forward -n conexao-solidaria svc/gateway       18080:80    # API (Postman): http://localhost:18080/api/...
+
+# Observabilidade
+kubectl port-forward -n conexao-solidaria svc/grafana        3000:3000  # Grafana (metricas/dashboards): http://localhost:3000
+kubectl port-forward -n conexao-solidaria svc/prometheus     9090:9090  # Prometheus (targets/PromQL):   http://localhost:9090
+kubectl port-forward -n conexao-solidaria svc/rabbitmq      15672:15672 # RabbitMQ management
+kubectl port-forward -n conexao-solidaria svc/zabbix-web     8085:8080  # Zabbix
+kubectl port-forward -n conexao-solidaria svc/elasticsearch  9200:9200  # Elasticsearch
+
+# Swagger (ja habilitado nas duas APIs; o gateway so roteia /api/*, entao acesse a API direto)
+kubectl port-forward -n conexao-solidaria svc/identity-api  18081:80    # Swagger Identity:  http://localhost:18081/swagger
+kubectl port-forward -n conexao-solidaria svc/campaigns-api 18082:80    # Swagger Campaigns: http://localhost:18082/swagger
 ```
+
+### Credenciais padrao
+
+Os valores reais vem do `.env` da raiz (via Secret `conexao-solidaria-secret`); abaixo
+os defaults do template.
+
+| Acesso | Usuario | Senha | Origem |
+|--------|---------|-------|--------|
+| **Grafana** (http://localhost:3000) | `admin` | `GRAFANA_ADMIN_PASSWORD` | `.env` -> Secret `grafana-admin-*` |
+| **API - gestor/admin** (login) | `gestor@conexaosolidaria.local` | `SEED_MANAGER_PASSWORD` | `.env` -> Secret `seed-gestor-password` (env `Seed__Gestor__Senha`) |
+
+- O gestor tem role `GestorOng` (cria/gerencia campanhas). Ele e semeado no boot da
+  Identity API **somente se** `SEED_MANAGER_PASSWORD` estiver definido no `.env`.
+- E-mail/CPF/nome do gestor usam os defaults (`gestor@conexaosolidaria.local`, CPF
+  `52998224725`, "Gestor ONG"); para mudar, defina `Seed__Gestor__Email` etc.
+- Para atuar como **doador**, crie um usuario via `POST /api/auth/cadastro-doador`
+  (a senha e a que voce enviar no corpo).
+
+### Teste no Postman (via gateway)
+
+Com o port-forward `svc/gateway 18080:80`, o ponto de entrada e
+`http://localhost:18080/api/...` (o YARP roteia apenas `/api/*`):
+
+| Metodo | Endpoint | Auth | Descricao |
+|--------|----------|------|-----------|
+| POST | `/api/auth/login` | publico | autentica (gestor ou doador) e retorna o JWT |
+| POST | `/api/auth/cadastro-doador` | publico | cria um doador e retorna o JWT |
+| GET  | `/api/auth/me` | Bearer | dados do usuario logado |
+| GET  | `/api/campanhas/search` | publico | lista/busca campanhas |
+| POST | `/api/campanhas` | Bearer (gestor) | cria campanha |
+| POST | `/api/doacoes` | Bearer (doador) | registra doacao |
+
+Fluxo: faca `POST /api/auth/login` com `{ "email": "gestor@conexaosolidaria.local",
+"senha": "<SEED_MANAGER_PASSWORD>" }`, copie o `accessToken` da resposta e use nas
+rotas protegidas no header `Authorization: Bearer {accessToken}`.
 
 ## Decisoes de arquitetura
 

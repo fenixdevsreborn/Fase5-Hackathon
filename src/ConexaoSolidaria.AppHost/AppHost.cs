@@ -10,6 +10,10 @@ var builder = DistributedApplication.CreateBuilder(args);
 // ---------------------------------------------------------------------------
 var jwtSecret = builder.AddParameter("jwt-secret", secret: true);
 var seedManagerPassword = builder.AddParameter("seed-manager-password", secret: true);
+// Opcional: chave da OpenAI para as features de IA do Web (Assistente Solidario +
+// criacao assistida de campanhas). Vazia = app sobe normal com as features ocultas.
+//   dotnet user-secrets set "Parameters:openai-api-key" "sk-..."
+var openAiApiKey = builder.AddParameter("openai-api-key", secret: true);
 
 // ---------------------------------------------------------------------------
 // Infraestrutura (containers gerenciados pelo Aspire; senhas auto-geradas).
@@ -88,6 +92,7 @@ builder.AddProject<Projects.ConexaoSolidaria_Web>("web")
     // empurrar atualizacoes em tempo real via SignalR; referencia o RabbitMQ para obter
     // a connection string. Se o broker cair, o consumer e resiliente e o polling e o fallback.
     .WithReference(messaging)
+    .WithEnvironment("OPENAI_API_KEY", openAiApiKey)
     .WaitFor(gateway)
     .WaitFor(messaging)
     .WithExternalHttpEndpoints();

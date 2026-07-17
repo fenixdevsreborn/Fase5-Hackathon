@@ -31,6 +31,15 @@ public sealed record TransparenciaDto(
     decimal MetaFinanceira,
     decimal ValorTotalArrecadado);
 
+/// <summary>Read model de estatisticas por campanha. Espelha CampanhaStatsResponse da Campaigns.Api.</summary>
+public sealed record CampanhaStatsDto(
+    Guid CampaignId,
+    string Titulo,
+    decimal MetaFinanceira,
+    decimal TotalArrecadado,
+    long DoacoesProcessadas,
+    DateTimeOffset AtualizadoEm);
+
 /// <summary>Envelope de paginacao. Espelha PaginatedResponse da Campaigns.Api.</summary>
 public sealed record Paginated<T>(
     IReadOnlyList<T> Items,

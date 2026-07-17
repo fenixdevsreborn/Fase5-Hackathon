@@ -8,21 +8,27 @@
 <AuthorizeView Roles="Doador">
     <Authorized>
         <MudBreadcrumbs Items="_breadcrumbs" Class="px-0" />
-        <div class="d-flex align-center justify-space-between flex-wrap mb-4" style="gap:12px">
-            <div>
-                <MudText Typo="Typo.h4">Minhas doacoes</MudText>
-                <MudText Typo="Typo.body2" Color="Color.Secondary">
-                    Historico das suas doacoes e o status de processamento de cada uma.
-                </MudText>
+        <header class="cs-page-header">
+            <div class="cs-page-header__content">
+                <span class="cs-page-header__badge">
+                    <MudIcon Icon="@Icons.Material.Filled.VolunteerActivism" Size="Size.Small" />
+                    Minhas Doações
+                </span>
+                <h1 class="cs-page-header__title">Histórico de <span>Contribuições</span></h1>
+                <p class="cs-page-header__lead">
+                    Acompanhe o status e o processamento de cada doação enviada às ONGs de forma transparente.
+                </p>
             </div>
-            <MudButton Variant="Variant.Outlined"
-                       Color="Color.Primary"
-                       StartIcon="@Icons.Material.Filled.Refresh"
-                       OnClick="CarregarAsync"
-                       Disabled="_carregando">
-                Atualizar
-            </MudButton>
-        </div>
+            <div class="cs-page-header__actions">
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Refresh"
+                           OnClick="CarregarAsync"
+                           Disabled="_carregando">
+                    Atualizar
+                </MudButton>
+            </div>
+        </header>
 
         @if (_carregando)
         {

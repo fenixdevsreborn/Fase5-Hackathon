@@ -10,20 +10,26 @@
 
 <AuthorizeView Roles="GestorONG">
     <Authorized>
-        <div class="d-flex align-center justify-space-between flex-wrap mb-4" style="gap:12px">
-            <div>
-                <MudText Typo="Typo.h4">Painel do gestor</MudText>
-                <MudText Typo="Typo.body2" Color="Color.Secondary">
-                    Visão de negócio das campanhas da sua ONG.
-                </MudText>
+        <header class="cs-page-header">
+            <div class="cs-page-header__content">
+                <span class="cs-page-header__badge">
+                    <MudIcon Icon="@Icons.Material.Filled.Analytics" Size="Size.Small" />
+                    Painel do Gestor
+                </span>
+                <h1 class="cs-page-header__title">Gestão de <span>Campanhas</span></h1>
+                <p class="cs-page-header__lead">
+                    Visão de negócio e métricas de arrecadação das campanhas da sua ONG em tempo real.
+                </p>
             </div>
-            <MudButton Variant="Variant.Filled"
-                       Color="Color.Primary"
-                       StartIcon="@Icons.Material.Filled.AddCircle"
-                       Href="/gestor/campanhas/nova">
-                Nova campanha
-            </MudButton>
-        </div>
+            <div class="cs-page-header__actions">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.AddCircle"
+                           Href="/gestor/campanhas/nova">
+                    Nova campanha
+                </MudButton>
+            </div>
+        </header>
 
         @if (_carregando)
         {

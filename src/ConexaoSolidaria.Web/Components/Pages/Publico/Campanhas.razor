@@ -6,11 +6,15 @@
 <PageTitle>Campanhas - Conexão Solidária</PageTitle>
 
 <section class="campaign-page">
-    <header class="campaign-hero">
-        <span class="campaign-hero__eyebrow">Faça parte dessa conexão</span>
-        <h1>Campanhas que <span>transformam vidas</span></h1>
-        <p>Explore campanhas ativas e escolha onde você quer fazer a diferença. Sua contribuição pode mudar o amanhã de alguém.</p>
-        <div class="campaign-hero__orbit" aria-hidden="true"><i></i><i></i><i></i></div>
+    <header class="cs-page-header">
+        <div class="cs-page-header__content">
+            <span class="cs-page-header__badge">
+                <MudIcon Icon="@Icons.Material.Filled.Favorite" Size="Size.Small" />
+                Faça parte dessa conexão
+            </span>
+            <h1 class="cs-page-header__title">Campanhas que <span>transformam vidas</span></h1>
+            <p class="cs-page-header__lead">Explore campanhas ativas e escolha onde você quer fazer a diferença. Sua contribuição pode mudar o amanhã de alguém.</p>
+        </div>
     </header>
 
     @if (!_loading && !_error && _campanhas.Count > 0)

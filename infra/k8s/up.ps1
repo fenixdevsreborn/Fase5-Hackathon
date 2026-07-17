@@ -117,6 +117,8 @@ function Require-Env($name) {
 # Mapeia .env -> chaves do Secret (ver secret.example.yaml).
 # zabbix-user nao existe no .env; usa o default 'Admin' (ReadmeKubernetes secao 8).
 $zabbixUser = if ($envVars.ContainsKey("ZABBIX_USER") -and $envVars["ZABBIX_USER"]) { $envVars["ZABBIX_USER"] } else { "Admin" }
+# openai-api-key e OPCIONAL (features de IA do Web): vazia = app sobe com as features ocultas.
+$openAiKey = if ($envVars.ContainsKey("OPENAI_API_KEY")) { $envVars["OPENAI_API_KEY"] } else { "" }
 $literals = @(
     "--from-literal=postgres-password=$(Require-Env 'POSTGRES_PASSWORD')"
     "--from-literal=jwt-secret=$(Require-Env 'JWT_SECRET')"
@@ -127,6 +129,7 @@ $literals = @(
     "--from-literal=zabbix-user=$zabbixUser"
     "--from-literal=zabbix-password=$(Require-Env 'ZABBIX_PASSWORD')"
     "--from-literal=seed-gestor-password=$(Require-Env 'SEED_MANAGER_PASSWORD')"
+    "--from-literal=openai-api-key=$openAiKey"
 )
 # Idempotente: dry-run gera o YAML e o apply cria/atualiza.
 kubectl create secret generic conexao-solidaria-secret -n $ns @literals --dry-run=client -o yaml | kubectl apply -f -
@@ -170,8 +173,29 @@ Write-Host ""
 Write-Host "Stack no ar (12 pods)." -ForegroundColor Green
 Write-Host ""
 Write-Host "Acesso local recomendado - port-forward (NAO passa pela NetworkPolicy):" -ForegroundColor Green
-Write-Host "  kubectl port-forward -n $ns svc/web     18088:80   # App:  http://localhost:18088" -ForegroundColor Green
-Write-Host "  kubectl port-forward -n $ns svc/gateway 18080:80   # API:  http://localhost:18080/api/..." -ForegroundColor Green
+Write-Host "  kubectl port-forward -n $ns svc/web           18088:80    # App:  http://localhost:18088" -ForegroundColor Green
+Write-Host "  kubectl port-forward -n $ns svc/gateway       18080:80    # API (Postman): http://localhost:18080/api/..." -ForegroundColor Green
+Write-Host "  kubectl port-forward -n $ns svc/grafana        3000:3000  # Grafana (metricas/dashboards): http://localhost:3000" -ForegroundColor Green
+Write-Host "  kubectl port-forward -n $ns svc/prometheus     9090:9090  # Prometheus (targets/PromQL):   http://localhost:9090" -ForegroundColor Green
+Write-Host "  kubectl port-forward -n $ns svc/identity-api  18081:80    # Swagger Identity:  http://localhost:18081/swagger" -ForegroundColor Green
+Write-Host "  kubectl port-forward -n $ns svc/campaigns-api 18082:80    # Swagger Campaigns: http://localhost:18082/swagger" -ForegroundColor Green
+Write-Host "  kubectl port-forward -n $ns svc/rabbitmq     15672:15672  # RabbitMQ Management: http://localhost:15672" -ForegroundColor Green
+Write-Host ""
+Write-Host "RabbitMQ Management: login com RABBITMQ_USER / RABBITMQ_PASSWORD do .env." -ForegroundColor DarkGray
+Write-Host "  Demo da mensageria: filas doacoes-recebidas (worker), doacoes.retry.10s/60s, doacoes.dead-letter" -ForegroundColor DarkGray
+Write-Host "  e exchanges conexao-solidaria (direct/outbox) + conexao-solidaria.notifications (fanout/SignalR)." -ForegroundColor DarkGray
+Write-Host "Grafana: login com GRAFANA_ADMIN_USER / GRAFANA_ADMIN_PASSWORD do .env." -ForegroundColor DarkGray
+Write-Host "  Dashboards 'Conexao Solidaria' (Aplicacao, Negocio, Mensageria, Saude) ja vem provisionados." -ForegroundColor DarkGray
+Write-Host ""
+Write-Host "Teste rapido no Postman (via gateway, apos o port-forward svc/gateway 18080:80):" -ForegroundColor Green
+Write-Host "  POST http://localhost:18080/api/auth/cadastro-doador  (publico) - cria um doador e retorna o JWT" -ForegroundColor Green
+Write-Host '        body (JSON): { "nomeCompleto": "Teste", "email": "teste@ex.com", "cpf": "<CPF valido>", "senha": "Senha@123" }' -ForegroundColor DarkGray
+Write-Host "  POST http://localhost:18080/api/auth/login            (publico) - autentica e retorna o JWT" -ForegroundColor Green
+Write-Host '        body (JSON): { "email": "teste@ex.com", "senha": "Senha@123" }' -ForegroundColor DarkGray
+Write-Host "        admin/gestor semeado: gestor@conexaosolidaria.local / SEED_MANAGER_PASSWORD do .env" -ForegroundColor DarkGray
+Write-Host "  GET  http://localhost:18080/api/auth/me               (Bearer)  - dados do usuario logado" -ForegroundColor Green
+Write-Host "  GET  http://localhost:18080/api/campanhas/search      (publico) - lista/busca campanhas" -ForegroundColor Green
+Write-Host "  Header nas rotas protegidas: Authorization: Bearer {accessToken retornado no login}" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "NodePort (30088/30080) so funciona com o nginx ingress controller: a NetworkPolicy" -ForegroundColor DarkGray
 Write-Host "default-deny-ingress bloqueia acesso direto, liberando apenas o ingress." -ForegroundColor DarkGray

@@ -1,6 +1,7 @@
 using ConexaoSolidaria.Contracts.Messaging;
 using ConexaoSolidaria.Web.Components;
 using ConexaoSolidaria.Web.Services;
+using ConexaoSolidaria.Web.Services.Ai;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
@@ -60,6 +61,20 @@ builder.Services.Configure<RabbitMqOptions>(
     builder.Configuration.GetSection(RabbitMqOptions.SectionName));
 builder.Services.AddSingleton<NotificationDispatcher>();
 builder.Services.AddHostedService<NotificationConsumer>();
+
+// IA (Assistente Solidario + criacao assistida de campanhas) via Microsoft Agent Framework.
+// Sem OPENAI_API_KEY o app sobe normalmente e a UI esconde as features (mesmo espirito do
+// RabbitMQ opcional acima). Os servicos sao SEMPRE registrados para os @inject dos
+// componentes nunca falharem; o gate e AiChatClientProvider.Enabled.
+builder.Services.Configure<AiOptions>(options =>
+{
+    builder.Configuration.GetSection(AiOptions.SectionName).Bind(options);
+    options.ApiKey ??= builder.Configuration["OPENAI_API_KEY"];
+});
+builder.Services.AddSingleton<AiChatClientProvider>();   // IChatClient singleton (thread-safe)
+builder.Services.AddScoped<AssistantTools>();            // usa ApiClient/TokenProvider do circuito
+builder.Services.AddScoped<AssistantChatService>();      // agente + thread por circuito Blazor
+builder.Services.AddScoped<CampaignDraftService>();
 
 var app = builder.Build();
 

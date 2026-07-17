@@ -8,7 +8,18 @@
 
 <AuthorizeView Roles="GestorONG">
     <Authorized>
-        <MudText Typo="Typo.h4" GutterBottom="true">Editar campanha</MudText>
+        <header class="cs-page-header">
+            <div class="cs-page-header__content">
+                <span class="cs-page-header__badge">
+                    <MudIcon Icon="@Icons.Material.Filled.Edit" Size="Size.Small" />
+                    Ajustar detalhes
+                </span>
+                <h1 class="cs-page-header__title">Editar <span>Campanha</span></h1>
+                <p class="cs-page-header__lead">
+                    Atualize os dados da sua campanha abaixo. As alterações serão salvas e validadas pela plataforma.
+                </p>
+            </div>
+        </header>
 
         @if (_carregando)
         {
@@ -25,10 +36,6 @@
         }
         else
         {
-            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-                Atualize os dados da campanha. As regras finais são validadas pelo servidor.
-            </MudText>
-
             <MudPaper Class="pa-6" Elevation="1" Style="max-width:820px">
                 <CampaignForm Model="_model"
                               SubmitLabel="Salvar alterações"

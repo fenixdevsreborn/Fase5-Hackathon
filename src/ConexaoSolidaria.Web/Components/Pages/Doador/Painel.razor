@@ -5,14 +5,18 @@
 
 <AuthorizeView Roles="Doador">
     <Authorized>
-        <div class="d-flex align-center mb-1">
-            <MudIcon Icon="@Icons.Material.Filled.VolunteerActivism" Color="Color.Primary" Class="mr-2" />
-            <MudText Typo="Typo.h4">Ola, @(context.User.Identity?.Name ?? "doador")!</MudText>
-        </div>
-        <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-5">
-            Bem-vindo ao seu painel. Aqui voce encontra atalhos para apoiar campanhas e
-            acompanhar o processamento das suas doacoes.
-        </MudText>
+        <header class="cs-page-header">
+            <div class="cs-page-header__content">
+                <span class="cs-page-header__badge">
+                    <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Size="Size.Small" />
+                    Área do Doador
+                </span>
+                <h1 class="cs-page-header__title">Olá, <span>@(context.User.Identity?.Name ?? "doador")</span>!</h1>
+                <p class="cs-page-header__lead">
+                    Bem-vindo ao seu painel. Apoie campanhas e acompanhe o processamento de suas doações em tempo real.
+                </p>
+            </div>
+        </header>
 
         <MudGrid Spacing="4">
             <MudItem xs="12" md="6">

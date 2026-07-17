@@ -51,6 +51,10 @@ public sealed class ApiClient(HttpClient http, TokenProvider tokenProvider)
         await GetAsync<IReadOnlyList<TransparenciaDto>>("api/campanhas/transparencia", ct)
         ?? Array.Empty<TransparenciaDto>();
 
+    public async Task<IReadOnlyList<CampanhaStatsDto>> StatsCampanhasAsync(CancellationToken ct = default) =>
+        await GetAsync<IReadOnlyList<CampanhaStatsDto>>("api/campanhas/stats", ct)
+        ?? Array.Empty<CampanhaStatsDto>();
+
     public Task<CampanhaDto?> CriarCampanhaAsync(SalvarCampanha dto, CancellationToken ct = default) =>
         PostAsync<CampanhaDto>("api/campanhas", dto, ct);
 
