@@ -60,7 +60,7 @@
     <PackageVersion Include="RabbitMQ.Client" Version="7.2.1" />
     <!-- Alinhado ao servidor Elasticsearch 8.15.3 (infra/k8s/base/elasticsearch.yaml). O client 9.x
          envia o media-type compatible-with=9, que o ES 8.x rejeita ("Invalid media-type value"). -->
-    <PackageVersion Include="Elastic.Clients.Elasticsearch" Version="8.19.21" />
+    <PackageVersion Include="Elastic.Clients.Elasticsearch" Version="8.19.23" />
     <PackageVersion Include="MessagePack" Version="3.1.8" />
   </ItemGroup>
 
