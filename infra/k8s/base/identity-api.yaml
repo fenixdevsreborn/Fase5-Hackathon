@@ -1,0 +1,124 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity-api
+  labels:
+    app: identity-api
+    app.kubernetes.io/component: api
+  annotations:
+    # Keel: auto-update quando o digest de :latest mudar no Docker Hub (ver infra/k8s/keel/).
+    keel.sh/policy: force
+    keel.sh/trigger: poll
+    keel.sh/pollSchedule: "@every 1m"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: identity-api
+  template:
+    metadata:
+      labels:
+        app: identity-api
+    spec:
+      # Hardening #K8S-008: pod roda como non-root, sem privilegios.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: identity-api
+          image: conexao-solidaria/identity-api:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: ASPNETCORE_URLS
+              value: http://+:8080
+            # B8: o schema e aplicado pelo Job identity-migrations ANTES do deploy.
+            # Aqui a app NAO migra no boot (evita corrida de MigrateAsync entre replicas),
+            # apenas aguarda o schema ja existir. No Compose/AppHost o default e true.
+            - name: Migrations__RunOnStartup
+              value: "false"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: postgres-password
+            - name: ConnectionStrings__IdentityDb
+              value: Host=postgres;Port=5432;Database=identitydb;Username=postgres;Password=$(POSTGRES_PASSWORD)
+            - name: Jwt__Issuer
+              value: ConexaoSolidaria
+            - name: Jwt__Audience
+              value: ConexaoSolidaria
+            - name: Jwt__Secret
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: jwt-secret
+            # Seed do gestor inicial (opcional): so semeia se a senha estiver definida.
+            - name: Seed__Gestor__Senha
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: seed-gestor-password
+                  optional: true
+          # Probes #K8S-006: startup em /alive (tolerante ao boot + EF Migrate),
+          # readiness em /health (pode checar deps), liveness em /alive (NAO depende de DB).
+          startupProbe:
+            httpGet:
+              path: /alive
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /alive
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # readOnlyRootFilesystem exige um volume gravavel para /tmp.
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: identity-api
+  labels:
+    app: identity-api
+spec:
+  type: ClusterIP
+  selector:
+    app: identity-api
+  ports:
+    # port 80 -> container 8080: permite service discovery YARP (http://identity-api).
+    - name: http
+      port: 80
+      targetPort: http

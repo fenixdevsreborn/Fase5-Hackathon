@@ -1,0 +1,42 @@
+@* Botao flutuante do Assistente Solidario (IA). So renderiza quando OPENAI_API_KEY esta
+   configurada (degradacao graciosa: sem chave, a plataforma funciona sem a feature). *@
+@using ConexaoSolidaria.Web.Services.Ai
+@inject AiChatClientProvider Ai
+
+@if (Ai.Enabled)
+{
+    @if (_aberto)
+    {
+        <div class="cs-assistant-panel">
+            <div class="cs-assistant-panel__header">
+                <div class="cs-assistant-panel__avatar">
+                    <MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Small" />
+                    <span class="cs-assistant-panel__pulse"></span>
+                </div>
+                <div class="cs-assistant-panel__title">
+                    <strong>Assistente Solidario</strong>
+                    <small><span class="cs-assistant-panel__dot"></span> Online agora</small>
+                </div>
+                <MudIconButton Icon="@Icons.Material.Filled.Close"
+                               Size="Size.Small"
+                               Style="color:inherit"
+                               OnClick="Alternar"
+                               aria-label="Fechar assistente" />
+            </div>
+            <AssistantChat />
+        </div>
+    }
+
+    <button type="button"
+            class="cs-assistant-fab @(_aberto ? "cs-assistant-fab--open" : string.Empty)"
+            @onclick="Alternar"
+            aria-label="@(_aberto ? "Fechar Assistente Solidario" : "Abrir Assistente Solidario")">
+        <MudIcon Icon="@(_aberto ? Icons.Material.Filled.Close : Icons.Material.Filled.SmartToy)" />
+    </button>
+}
+
+@code {
+    private bool _aberto;
+
+    private void Alternar() => _aberto = !_aberto;
+}

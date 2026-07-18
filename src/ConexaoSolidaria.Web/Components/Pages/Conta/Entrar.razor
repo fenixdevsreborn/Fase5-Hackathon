@@ -1,0 +1,185 @@
+@page "/entrar"
+@layout AuthLayout
+@using System.ComponentModel.DataAnnotations
+@using System.Text.RegularExpressions
+@inject AuthService Auth
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>Entrar - Conexao Solidaria</PageTitle>
+
+<section class="cs-login-card" aria-labelledby="login-title">
+    <a class="cs-login-card__brand" href="/" aria-label="Voltar para a pagina inicial">
+        <img src="images/logo/logomarca-horizontal.png" alt="Conexao Solidaria" />
+    </a>
+
+    <header class="cs-login-card__header">
+        <h1 id="login-title">Entrar</h1>
+        <p>Acesso para <span>Doador</span> e <strong>Gestor ONG</strong></p>
+    </header>
+
+    <form class="cs-login-form" @onsubmit="EntrarAsync" @onsubmit:preventDefault novalidate>
+        <div class="cs-login-form__field">
+            <label for="identificador">E-mail ou CPF</label>
+            <div class="cs-login-form__input @(_identificadorInvalido ? "cs-login-form__input--invalid" : string.Empty)">
+                <MudIcon Icon="@Icons.Material.Outlined.Email" Size="Size.Small" />
+                <input id="identificador"
+                       name="identificador"
+                       type="text"
+                       inputmode="email"
+                       autocomplete="username"
+                       placeholder="Digite seu e-mail ou CPF"
+                       aria-invalid="@_identificadorInvalido"
+                       @bind="_identificador"
+                       @bind:event="oninput" />
+            </div>
+            @if (_identificadorInvalido)
+            {
+                <span class="cs-login-form__validation">Informe um e-mail ou CPF valido.</span>
+            }
+        </div>
+
+        <div class="cs-login-form__field">
+            <label for="senha">Senha</label>
+            <div class="cs-login-form__input @(_senhaInvalida ? "cs-login-form__input--invalid" : string.Empty)">
+                <MudIcon Icon="@Icons.Material.Outlined.Lock" Size="Size.Small" />
+                <input id="senha"
+                       name="senha"
+                       type="@(_mostrarSenha ? "text" : "password")"
+                       autocomplete="current-password"
+                       placeholder="Digite sua senha"
+                       aria-invalid="@_senhaInvalida"
+                       @bind="_senha"
+                       @bind:event="oninput" />
+                <button class="cs-login-form__visibility"
+                        type="button"
+                        aria-label="@(_mostrarSenha ? "Ocultar senha" : "Mostrar senha")"
+                        @onclick="ToggleSenha">
+                    <MudIcon Icon="@(_mostrarSenha ? Icons.Material.Outlined.VisibilityOff : Icons.Material.Outlined.Visibility)" Size="Size.Small" />
+                </button>
+            </div>
+            @if (_senhaInvalida)
+            {
+                <span class="cs-login-form__validation">Informe sua senha.</span>
+            }
+        </div>
+
+        <div class="cs-login-form__options">
+            <label class="cs-login-form__remember">
+                <input type="checkbox" @bind="_lembrarMe" />
+                <span>Lembrar-me</span>
+            </label>
+            <button type="button" class="cs-login-form__forgot" @onclick="AvisarRecuperacao">
+                Esqueci minha senha
+            </button>
+        </div>
+
+        @if (_erro)
+        {
+            <div @key="_shakeKey" class="cs-login-form__error cs-shake" role="alert">
+                <MudIcon Icon="@Icons.Material.Outlined.ErrorOutline" Size="Size.Small" />
+                Credenciais invalidas. Verifique os dados informados.
+            </div>
+        }
+
+        <button class="cs-login-form__submit" type="submit" disabled="@_enviando">
+            @if (_enviando)
+            {
+                <span class="cs-login-form__spinner" aria-hidden="true"></span>
+                <span>Entrando...</span>
+            }
+            else
+            {
+                <span>Entrar</span>
+                <MudIcon Icon="@Icons.Material.Outlined.ArrowForward" Size="Size.Small" />
+            }
+        </button>
+
+        <div class="cs-login-form__divider"><span>ou</span></div>
+
+        <a class="cs-login-form__create" href="@CadastrarHref">
+            <span>Criar conta</span>
+            <MudIcon Icon="@Icons.Material.Outlined.PersonAdd" Size="Size.Small" />
+        </a>
+    </form>
+
+    <p class="cs-login-card__security">
+        <MudIcon Icon="@Icons.Material.Outlined.Lock" Size="Size.Small" />
+        Seus dados estao protegidos e seguros conosco.
+    </p>
+</section>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    private string _identificador = string.Empty;
+    private string _senha = string.Empty;
+    private bool _mostrarSenha;
+    private bool _lembrarMe;
+    private bool _enviando;
+    private bool _erro;
+    private bool _identificadorInvalido;
+    private bool _senhaInvalida;
+    private int _shakeKey;
+
+    private string CadastrarHref =>
+        string.IsNullOrWhiteSpace(ReturnUrl) ? "/cadastrar" : $"/cadastrar?returnUrl={Uri.EscapeDataString(ReturnUrl)}";
+
+    private void ToggleSenha() => _mostrarSenha = !_mostrarSenha;
+
+    private void AvisarRecuperacao() => Snackbar.Add(
+        "A recuperacao de senha ainda nao esta disponivel. Entre em contato com o suporte.",
+        Severity.Info);
+
+    private bool Validar()
+    {
+        var valor = _identificador.Trim();
+        _identificadorInvalido = !new EmailAddressAttribute().IsValid(valor)
+            && !Regex.IsMatch(valor, "^[0-9]{11}$");
+        _senhaInvalida = string.IsNullOrWhiteSpace(_senha);
+        return !_identificadorInvalido && !_senhaInvalida;
+    }
+
+    private async Task EntrarAsync()
+    {
+        _erro = false;
+        if (!Validar())
+        {
+            return;
+        }
+
+        _enviando = true;
+        try
+        {
+            var result = await Auth.LoginAsync(_identificador.Trim(), _senha);
+            if (result is null)
+            {
+                _erro = true;
+                _shakeKey++;
+                return;
+            }
+
+            Nav.NavigateTo(Destino(result.Role), forceLoad: false);
+        }
+        finally
+        {
+            _enviando = false;
+        }
+    }
+
+    private string Destino(string role)
+    {
+        if (!string.IsNullOrWhiteSpace(ReturnUrl) && ReturnUrl.StartsWith('/'))
+        {
+            return ReturnUrl;
+        }
+
+        return role switch
+        {
+            "GestorONG" => "/gestor",
+            "Doador" => "/doador",
+            _ => "/",
+        };
+    }
+}

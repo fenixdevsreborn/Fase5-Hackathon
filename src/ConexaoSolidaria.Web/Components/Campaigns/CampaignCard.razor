@@ -1,0 +1,103 @@
+@using System.Globalization
+
+<article class="cs-card @(Horizontal ? "cs-card--horizontal" : string.Empty)">
+    <a class="cs-card__media" href="@Detalhe" aria-label="@Campanha.Titulo">
+        <img src="@Imagem" alt="@Campanha.Titulo" loading="lazy" />
+        <span class="cs-card__category">@Categoria</span>
+        <span class="cs-card__status cs-card__status--@StatusModifier">@Campanha.Status</span>
+    </a>
+
+    <div class="cs-card__body">
+        <span class="cs-card__eyebrow">Campanha</span>
+        <h3 class="cs-card__title">
+            <a href="@Detalhe">@Campanha.Titulo</a>
+        </h3>
+        <p class="cs-card__desc">@Campanha.Descricao</p>
+
+        <div class="cs-card__spacer"></div>
+
+        <div class="cs-card__amounts">
+            <div class="cs-card__raised">
+                <span class="cs-card__raised-value">@Money(Campanha.ValorTotalArrecadado)</span>
+                <span class="cs-card__raised-label">arrecadados</span>
+            </div>
+            <div class="cs-card__goal">Meta: @Money(Campanha.MetaFinanceira)</div>
+        </div>
+
+        <div class="cs-card__progress">
+            <div class="cs-card__track">
+                <div class="cs-card__fill" style="width:@PercentCss;"></div>
+            </div>
+            <span class="cs-card__percent">@PercentLabel</span>
+        </div>
+
+        <div class="cs-card__meta">
+            <span class="cs-card__meta-item">
+                <MudIcon Icon="@Icons.Material.Filled.Group" Size="Size.Small" />
+                @DoadoresLabel
+            </span>
+            <span class="cs-card__meta-item">
+                <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Small" />
+                @DiasRestantesLabel
+            </span>
+        </div>
+
+        <a class="cs-card__cta" href="@Detalhe">
+            <MudIcon Icon="@AcaoIcon" Size="Size.Small" />
+            <span>@AcaoLabel</span>
+        </a>
+    </div>
+</article>
+
+@code {
+    /// <summary>Campanha exibida no cartao.</summary>
+    [Parameter, EditorRequired] public CampanhaDto Campanha { get; set; } = default!;
+
+    /// <summary>Exibe imagem e conteúdo lado a lado em telas maiores.</summary>
+    [Parameter] public bool Horizontal { get; set; }
+
+    private static readonly CultureInfo Ptbr = CultureInfo.GetCultureInfo("pt-BR");
+
+    private string Detalhe => $"/campanhas/{Campanha.Id}";
+    private string Imagem => CampaignVisuals.ImagemDe(Campanha.Id);
+    private string Categoria => CampaignVisuals.RotuloCategoria(Campanha.Categoria);
+
+    private string DoadoresLabel => Campanha.TotalDoadores switch
+    {
+        <= 0 => "Seja o primeiro",
+        1 => "1 doador",
+        var n => $"{n.ToString("N0", Ptbr)} doadores",
+    };
+
+    private bool Ativa => Campanha.Status == "Ativa";
+    private string AcaoLabel => Ativa ? "Doar agora" : "Ver campanha";
+    private string AcaoIcon => Ativa ? Icons.Material.Filled.Favorite : Icons.Material.Filled.Visibility;
+
+    private string StatusModifier => Campanha.Status switch
+    {
+        "Ativa" => "ativa",
+        "Concluida" => "concluida",
+        "Cancelada" => "cancelada",
+        _ => "default",
+    };
+
+    private double Percent => Campanha.MetaFinanceira <= 0m
+        ? 0d
+        : Math.Clamp((double)(Campanha.ValorTotalArrecadado / Campanha.MetaFinanceira) * 100d, 0d, 100d);
+
+    private string PercentCss => Percent.ToString("0.#", CultureInfo.InvariantCulture) + "%";
+    private string PercentLabel => $"{Percent.ToString("0", Ptbr)}%";
+
+    private int DiasRestantes => Math.Max(0, (int)Math.Ceiling((Campanha.DataFim - DateTimeOffset.Now).TotalDays));
+
+    private string DiasRestantesLabel => !Ativa
+        ? "Encerrada"
+        : DiasRestantes switch
+        {
+            0 => "Ultimo dia",
+            1 => "1 dia restante",
+            _ => $"{DiasRestantes} dias restantes",
+        };
+
+    private static string Money(decimal value) => value.ToString("C0", Ptbr);
+}

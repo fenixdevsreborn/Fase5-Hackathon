@@ -2,10 +2,12 @@ using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using ConexaoSolidaria.Identity.Api.Data;
 using ConexaoSolidaria.Identity.Api.Domain;
+using ConexaoSolidaria.Identity.Api.Infrastructure;
 using ConexaoSolidaria.Identity.Api.Requests;
 using ConexaoSolidaria.Identity.Api.Responses;
 using ConexaoSolidaria.Identity.Api.Security;
-using ConexaoSolidaria.Shared.Validation;
+using ConexaoSolidaria.Contracts.Validation;
+using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,6 +15,7 @@ using Microsoft.EntityFrameworkCore;
 namespace ConexaoSolidaria.Identity.Api.Controllers;
 
 [ApiController]
+[ApiVersion("1.0")]
 [Route("api/auth")]
 public sealed class AuthController(IdentityDbContext db, JwtTokenService jwtTokenService) : ControllerBase
 {
@@ -26,7 +29,7 @@ public sealed class AuthController(IdentityDbContext db, JwtTokenService jwtToke
         var validationErrors = ValidateCadastro(request);
         if (validationErrors.Count > 0)
         {
-            return BadRequest(new ValidationProblemDetails(validationErrors));
+            return ProblemResults.Validation(validationErrors);
         }
 
         var email = AppUser.NormalizeEmail(request.Email);
@@ -34,12 +37,12 @@ public sealed class AuthController(IdentityDbContext db, JwtTokenService jwtToke
 
         if (await db.Users.AnyAsync(user => user.Email == email, cancellationToken))
         {
-            return Conflict(new { mensagem = "Ja existe um usuario com este email." });
+            return ProblemResults.Conflict("Ja existe um usuario com este email.");
         }
 
         if (await db.Users.AnyAsync(user => user.Cpf == cpf, cancellationToken))
         {
-            return Conflict(new { mensagem = "Ja existe um usuario com este CPF." });
+            return ProblemResults.Conflict("Ja existe um usuario com este CPF.");
         }
 
         var user = AppUser.CreateDoador(
@@ -61,18 +64,25 @@ public sealed class AuthController(IdentityDbContext db, JwtTokenService jwtToke
     {
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Senha))
         {
-            return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
+            return ProblemResults.Validation(new Dictionary<string, string[]>
             {
                 ["credenciais"] = ["Email e senha sao obrigatorios."]
-            }));
+            });
         }
 
-        var email = AppUser.NormalizeEmail(request.Email);
-        var user = await db.Users.SingleOrDefaultAsync(item => item.Email == email, cancellationToken);
+        var identificador = request.Email.Trim();
+        var email = AppUser.NormalizeEmail(identificador);
+        var cpf = CpfValidator.IsValid(identificador)
+            ? CpfValidator.Normalize(identificador)
+            : null;
+
+        var user = await db.Users.SingleOrDefaultAsync(
+            item => item.Email == email || (cpf != null && item.Cpf == cpf),
+            cancellationToken);
 
         if (user is null || !BCrypt.Net.BCrypt.Verify(request.Senha, user.PasswordHash))
         {
-            return Unauthorized(new { mensagem = "Credenciais invalidas." });
+            return ProblemResults.Unauthorized("Credenciais invalidas.");
         }
 
         return Ok(jwtTokenService.CreateToken(user));

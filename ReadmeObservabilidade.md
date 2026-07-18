@@ -1,573 +1,294 @@
-# Observabilidade
+# Observabilidade - Conexão Solidária
 
-Este documento explica como rodar, acessar e configurar a observabilidade do projeto Conexao Solidaria usando Docker Desktop. A stack inclui:
+Como rodar, acessar e interpretar a observabilidade do projeto. A stack cobre três
+camadas:
 
-- Prometheus para coleta de metricas.
-- Grafana para dashboards.
-- Zabbix para monitoramento complementar de disponibilidade.
+- **Métricas de negócio, aplicação e mensageria** → `prometheus-net` (`/metrics`) →
+  **Prometheus** → **Grafana** (3 dashboards + alertas).
+- **Tracing distribuído (traces/métricas/logs)** → **OpenTelemetry** (OTLP) →
+  **Aspire Dashboard** (dev) ou **OTel Collector** → **Tempo** (traces) + Prometheus
+  (métricas), explorados na aba **Explore** do Grafana (datasource Tempo).
+- **Disponibilidade / profundidade de fila** → **Zabbix** (template real).
 
-As aplicacoes `.NET 10` expoem:
+Decisões e trade-offs em `docs/decisoes-arquiteturais.md` (AD-20, AD-21). Operação de
+incidentes em `docs/runbook.md`. Demonstração de queda e recuperação em
+`docs/cenario-falha-recuperacao.md`.
 
-- `/health`: saude do servico.
-- `/metrics`: metricas no formato Prometheus.
+## Instrumentação dos serviços
 
-## Servicos monitorados
+Todos os serviços `.NET 10` expõem, via `ServiceDefaults` (`MapDefaultEndpoints`):
 
-| Servico | Compose | Porta local | Endpoint de saude | Endpoint de metricas |
-| --- | --- | --- | --- | --- |
-| Identity API | `identity-api` | `5001` | http://localhost:5001/health | http://localhost:5001/metrics |
-| Campaigns API | `campaigns-api` | `5002` | http://localhost:5002/health | http://localhost:5002/metrics |
-| Donations Worker | `donations-worker` | `5003` | http://localhost:5003/health | http://localhost:5003/metrics |
+- `/health` - readiness (pode refletir dependências).
+- `/alive` - liveness (não depende de DB/RabbitMQ).
 
-Dentro da rede Docker Compose, os mesmos servicos sao acessados por:
+Os serviços com `prometheus-net` (`UseHttpMetrics` + `MapMetrics`) expõem ainda:
 
-- `http://identity-api:8080`
-- `http://campaigns-api:8080`
-- `http://donations-worker:8080`
+- `/metrics` - métricas HTTP + as métricas custom `conexao_*`.
 
-## Rodando com Docker Compose
+Cobertura atual de `/metrics`:
 
-Suba toda a stack:
+| Serviço | `/metrics` | Observação |
+| --- | --- | --- |
+| Identity API | sim | prometheus-net |
+| Campaigns API | sim | prometheus-net |
+| Donations Worker | sim | prometheus-net |
+| Gateway (YARP) | sim | prometheus-net (RPS/latência de borda) |
+| Web (Blazor) | não | apenas `/health` e `/alive`; scrape comentado no Prometheus |
 
-```powershell
-docker compose up --build
+## Métricas custom (`conexao_*`)
+
+| Métrica | Tipo | Significado |
+| --- | --- | --- |
+| `conexao_donations_processed_total` | counter | doações processadas com sucesso pelo Worker |
+| `conexao_donations_rejected_total` | counter | doações rejeitadas (campanha encerrada/cancelada) |
+| `conexao_donation_publish_total` | counter | eventos de doação publicados no broker |
+| `conexao_donation_publish_failures_total` | counter | falhas de publicação no broker |
+| `conexao_outbox_pending_messages` | gauge | mensagens pendentes na outbox (backlog) |
+| `conexao_donation_processing_duration_seconds` | histogram | tempo de processamento por doação |
+| `conexao_dead_letter_messages` | gauge | mensagens na dead-letter queue |
+
+Métricas HTTP (prometheus-net): `http_requests_received_total`,
+`http_request_duration_seconds_{count,bucket,sum}`, `http_requests_in_progress`.
+
+## Dashboards Grafana
+
+Provisionados automaticamente a partir de `infra/grafana/dashboards/*.json`
+(datasource e provisioning em `infra/grafana/provisioning/`). Pasta no Grafana:
+**Conexão Solidária**.
+
+### 1. Visão Executiva (Negócio) - `negocio.json`
+Painéis: doações processadas (total), doações rejeitadas (total), outbox pendente,
+dead-letter, taxa de processamento e acumulado ao longo do tempo.
+
+```promql
+sum(conexao_donations_processed_total)
+sum(conexao_donations_rejected_total)
+sum(rate(conexao_donations_processed_total[1m]))
+sum(conexao_outbox_pending_messages)
+sum(conexao_dead_letter_messages)
 ```
 
-Para rodar em segundo plano:
+### 2. Aplicação (HTTP) - `aplicacao.json`
+Painéis: RPS por serviço, latência p95 por serviço, taxa de erro 5xx (global e por
+serviço), requisições em andamento.
 
-```powershell
-docker compose up --build -d
+```promql
+sum(rate(http_requests_received_total[1m])) by (job)
+histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job))
+sum(rate(http_request_duration_seconds_count{code=~"5.."}[5m])) / sum(rate(http_request_duration_seconds_count[5m]))
+sum(http_requests_in_progress) by (job)
 ```
 
-Confira se os containers subiram:
+### 3. Mensageria - `mensageria.json`
+Painéis: publish vs consume, tempo de processamento por doação (p50/p95), outbox
+pendente, dead-letter, profundidade da fila RabbitMQ (requer plugin), backlog+DLQ ao
+longo do tempo.
 
-```powershell
-docker compose ps
+```promql
+sum(rate(conexao_donation_publish_total[1m]))
+sum(rate(conexao_donations_processed_total[1m]))
+histogram_quantile(0.95, sum(rate(conexao_donation_processing_duration_seconds_bucket[5m])) by (le))
+sum(conexao_dead_letter_messages)
+sum(rabbitmq_queue_messages{queue="doacoes-recebidas"})   # requer plugin rabbitmq_prometheus
 ```
 
-Veja logs da stack de observabilidade:
+## Alertas (Grafana Unified Alerting)
 
-```powershell
-docker compose logs -f prometheus grafana zabbix-server zabbix-web
+Provisionados em `infra/grafana/provisioning/alerting/conexao-solidaria-rules.yaml`
+(pasta **Conexão Solidária**). Pipeline padrão: query instant (A) → reduce last (B) →
+threshold (C).
+
+| Alerta | Severidade | Condição |
+| --- | --- | --- |
+| DLQ com mensagens | critical | `sum(conexao_dead_letter_messages) > 0` (`for: 0m`) |
+| Outbox pendente alto | warning | `sum(conexao_outbox_pending_messages) > 20` por `2m` |
+| Taxa de erro 5xx alta | warning | fração de 5xx `> 0.05` por `2m` |
+
+Expressão da taxa de 5xx:
+
+```promql
+sum(rate(http_request_duration_seconds_count{code=~"5.."}[5m])) / sum(rate(http_request_duration_seconds_count[5m]))
 ```
-
-Para parar tudo:
-
-```powershell
-docker compose down
-```
-
-Volumes Docker criados com nomes explicitos:
-
-| Volume | Uso |
-| --- | --- |
-| `conexao-solidaria-postgres-data` | Dados do PostgreSQL: `identitydb`, `campaignsdb` e `zabbixdb` |
-| `conexao-solidaria-grafana-data` | Dados persistentes do Grafana |
-
-Para listar:
-
-```powershell
-docker volume ls --filter label=com.conexaosolidaria.project=conexao-solidaria
-```
-
-Para limpar tambem os volumes locais, incluindo dados de Grafana, Zabbix e Postgres:
-
-```powershell
-docker compose down -v
-```
-
-## Acessos locais
-
-| Ferramenta | URL | Usuario | Senha |
-| --- | --- | --- | --- |
-| Prometheus | http://localhost:9090 | Nao requer | Nao requer |
-| Grafana | http://localhost:3000 | `admin` | `admin` |
-| Zabbix | http://localhost:8085 | `Admin` | `zabbix` |
-
-O primeiro startup do Zabbix pode demorar alguns minutos porque ele inicializa as tabelas no PostgreSQL.
 
 ## Prometheus
 
-### Como esta configurado
+Config em `infra/prometheus/prometheus.yml` (`scrape_interval: 5s`). Jobs:
+`identity-api`, `campaigns-api`, `donations-worker`, `gateway` (todos `:8080/metrics`)
+e `rabbitmq` (`:15692`, **requer** o plugin `rabbitmq_prometheus`). O job `web` está
+comentado (o Web não expõe `/metrics`).
 
-O Prometheus usa o arquivo:
-
-```text
-infra/prometheus/prometheus.yml
-```
-
-Configuracao atual:
-
-```yaml
-global:
-  scrape_interval: 5s
-
-scrape_configs:
-  - job_name: identity-api
-    metrics_path: /metrics
-    static_configs:
-      - targets: ["identity-api:8080"]
-
-  - job_name: campaigns-api
-    metrics_path: /metrics
-    static_configs:
-      - targets: ["campaigns-api:8080"]
-
-  - job_name: donations-worker
-    metrics_path: /metrics
-    static_configs:
-      - targets: ["donations-worker:8080"]
-```
-
-O Prometheus roda no Compose com:
-
-```yaml
-prometheus:
-  image: prom/prometheus:v2.55.1
-  ports:
-    - "9090:9090"
-  volumes:
-    - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-```
-
-### Validando os targets
-
-1. Acesse http://localhost:9090.
-2. Abra `Status` > `Targets`.
-3. Verifique se os jobs aparecem como `UP`:
-   - `identity-api`
-   - `campaigns-api`
-   - `donations-worker`
-
-Tambem e possivel consultar na aba `Graph`:
+Validar targets: `Status > Targets`, ou:
 
 ```promql
 up
-```
-
-Ou por servico:
-
-```promql
 up{job="identity-api"}
-up{job="campaigns-api"}
-up{job="donations-worker"}
 ```
 
-### Consultas uteis
+> No Docker Compose o `gateway` não é um serviço; o target `gateway` aparecerá **DOWN**
+> nesse ambiente (ele existe no Kubernetes/Aspire). O `rabbitmq` só fica UP com o plugin
+> `rabbitmq_prometheus` habilitado.
 
-Requisicoes HTTP por segundo:
+## Zabbix (template real)
 
-```promql
-sum(rate(http_requests_received_total[1m])) by (job)
-```
+Template importável: `infra/zabbix/templates/conexao-solidaria-template.yaml` (export
+nativo Zabbix 7.0, compatível 6.0+). Guia completo em `infra/zabbix/README.md`.
 
-Total de requisicoes HTTP recebidas:
+**O que monitora:**
+- `/health` de Identity, Campaigns e Worker via **web monitoring** (rspcode + latência) -
+ gera `web.test.fail[...]` e `web.test.time[...,resp]`.
+- Vitrine pública `GET /api/campanhas/transparencia` (rspcode).
+- **Profundidade da fila** `doacoes-recebidas` e da **DLQ** `doacoes.dead-letter` via
+  **RabbitMQ Management API** (`/api/queues/%2f/<fila>`, campo `.messages`), itens
+  `HTTP_AGENT` com auth básica.
 
-```promql
-sum(http_requests_received_total) by (job)
-```
+**9 triggers:** indisponibilidade das 3 APIs/Worker por 2min (HIGH), latência `/health`
+acima de `{$HTTP.LATENCY.MAX}` (WARNING), vitrine de transparência com erro (AVERAGE),
+fila principal acima de `{$QUEUE.DEPTH.MAX}` por 2min (HIGH) e DLQ `> 0` (HIGH).
 
-Doacoes processadas pelo worker:
+**Importar e associar:**
+1. `Data collection > Templates > Import` → selecione o arquivo.
+2. `Data collection > Hosts > Create host` → aba `Templates` → link "Conexão Solidária".
+3. Aba `Macros` → ajuste principalmente `{$RABBITMQ.USER}` e `{$RABBITMQ.PASSWORD}`
+   (as URLs default apontam para os nomes de serviço `http://identity-api:8080`,
+   `http://rabbitmq:15672`, etc., alcançáveis pelo Zabbix server na rede interna).
 
-```promql
-sum(conexao_donations_processed_total)
-```
+## Tracing distribuído (OpenTelemetry → Tempo)
 
-Tentativas de doacao rejeitadas porque a campanha esta encerrada ou cancelada:
+Todos os serviços instrumentam traces via `ServiceDefaults` (OpenTelemetry). O pipeline
+fora do Aspire é: **serviços (.NET) → OTel Collector → Tempo → Grafana (Explore)**.
 
-```promql
-sum(conexao_donations_rejected_total)
-```
-
-### Alterando a configuracao
-
-Para adicionar outro servico ao Prometheus:
-
-1. Edite `infra/prometheus/prometheus.yml`.
-2. Adicione um novo item em `scrape_configs`.
-3. Reinicie o Prometheus:
-
-```powershell
-docker compose restart prometheus
-```
-
-Exemplo:
-
-```yaml
-- job_name: novo-servico
-  metrics_path: /metrics
-  static_configs:
-    - targets: ["novo-servico:8080"]
-```
-
-## Grafana
-
-### Como esta configurado
-
-O Grafana e provisionado automaticamente por estes arquivos:
+### Fluxo
 
 ```text
-infra/grafana/provisioning/datasources/prometheus.yml
-infra/grafana/provisioning/dashboards/dashboards.yml
-infra/grafana/dashboards/conexao-solidaria.json
+identity-api ─┐
+campaigns-api ─┼─ OTLP ─► otel-collector ─► otlp/tempo (tempo:4317) ─► Tempo ─► Grafana (datasource Tempo)
+donations-worker ─┘                       └─ prometheus (:8889) ─────► Prometheus (métricas OTLP)
 ```
 
-O datasource `Prometheus` aponta para:
+O contexto de trace é propagado ponta a ponta: o Gateway injeta `X-Correlation-Id` e o
+`traceparent` viaja pelo HTTP e pela mensageria (header `traceparent` no evento
+`DoacaoRecebidaEvent`), então um span do `POST /api/doacoes` se conecta ao processamento
+no Worker.
 
-```text
-http://prometheus:9090
+### OTel Collector
+
+Config em `infra/otel/otel-collector-config.yaml` (imagem `otel/opentelemetry-collector-contrib`);
+detalhes em `infra/otel/README.md`. Recebe OTLP (gRPC `:4317` / HTTP `:4318`), aplica
+`memory_limiter`/`resource`/`batch` e exporta em **três pipelines**:
+
+- **traces** → `otlp/tempo` (`tempo:4317`, `tls.insecure` no demo) + `debug` (stdout);
+- **metrics** → `prometheus` (expostas em `:8889/metrics` para o Prometheus fazer scrape)
+  + `debug`;
+- **logs** → `debug`.
+
+O processor `resource` marca todos os sinais com `deployment.environment=conexao-solidaria`.
+Health do próprio collector em `:13133`.
+
+### Tempo (backend de traces)
+
+`infra/tempo/tempo.yaml` (imagem `grafana/tempo`). Recebe traces via OTLP do collector
+(`:4317`) e serve a **API de consulta em `:3200`**, usada pelo datasource do Grafana.
+
+### Datasource Grafana
+
+`infra/grafana/provisioning/datasources/tempo.yml` provisiona o datasource **Tempo**
+(uid `Tempo`, `url: http://tempo:3200`). Ele já vem com:
+
+- `tracesToMetrics` → correlaciona um trace com as métricas do serviço (exemplars),
+  reutilizando o datasource `Prometheus`;
+- `serviceMap` → mapa de serviços (também sobre o Prometheus).
+
+Abra **Grafana → Explore → datasource Tempo** e busque por trace ID, service ou nome de
+span (ex.: filtrar por `service.name`).
+
+### Ligando o exporter (envs)
+
+O `AddOpenTelemetryExporters()` do `ServiceDefaults` só liga o exporter OTLP quando
+`OTEL_EXPORTER_OTLP_ENDPOINT` está definido. Sem essa variável, a telemetria OTLP vai
+apenas para o **Aspire Dashboard** local.
+
+- **Docker Compose:** já configurado. `identity-api`, `campaigns-api` e `donations-worker`
+  recebem `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317` e
+  `OTEL_EXPORTER_OTLP_PROTOCOL=grpc`; os serviços `otel-collector` e `tempo` sobem no mesmo
+  `docker compose up`.
+- **Manual / outro ambiente:**
+
+  ```powershell
+  $env:OTEL_EXPORTER_OTLP_ENDPOINT = "http://otel-collector:4317"   # gRPC
+  # ou HTTP: http://otel-collector:4318 + OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+  ```
+
+- **Kubernetes:** os deployments **não** definem `OTEL_EXPORTER_OTLP_ENDPOINT` por padrão
+  (o overlay foca em métricas Prometheus + Grafana). Para tracing no cluster, adicione
+  `otel-collector` + `tempo` e a env acima apontando para o Service do collector.
+
+## Como abrir cada ferramenta
+
+### Dev local (Aspire)
+`dotnet run` no `ConexaoSolidaria.AppHost` sobe o grafo e o **Aspire Dashboard** (traces,
+métricas e logs OTLP), sem configuração extra.
+
+### Docker Compose
+```powershell
+docker compose up --build          # (-d para segundo plano)
+docker compose ps
+docker compose down                # (-v para apagar volumes)
 ```
 
-Esse endereco funciona dentro da rede Docker Compose. Pelo navegador da maquina, o Prometheus fica em `http://localhost:9090`.
+| Ferramenta | URL | Credenciais |
+| --- | --- | --- |
+| Prometheus | http://localhost:9090 | não requer |
+| Grafana | http://localhost:3000 | `.env`: `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` |
+| Zabbix Web | http://localhost:8085 | `Admin` / `.env`: `ZABBIX_PASSWORD` |
+| Identity API | http://localhost:5001 (`/metrics`, `/health`, `/swagger`) | - |
+| Campaigns API | http://localhost:5002 | - |
+| Donations Worker | http://localhost:5003 | - |
+| Elasticsearch | http://localhost:9200 | - |
+| RabbitMQ Management | http://localhost:15672 | `.env`: `RABBITMQ_USER` / `RABBITMQ_PASSWORD` |
+| Tempo (API de consulta) | http://localhost:3200 | traces via **Grafana → Explore → Tempo** |
+| OTel Collector (health) | http://localhost:13133 | métricas em `:8889/metrics` |
 
-### Acessando
+Credenciais reais vêm do `.env` (veja `.env.example` e `SECURITY.md`). O primeiro startup
+do Zabbix pode demorar (inicializa as tabelas no Postgres). Os **traces** não se navegam
+direto no Tempo: abra o **Grafana → Explore → datasource Tempo**.
 
-1. Acesse http://localhost:3000.
-2. Login:
-   - Usuario: `admin`
-   - Senha: `admin`
-3. Se o Grafana pedir troca de senha, escolha uma nova senha ou pule a troca para ambiente local.
-4. Abra `Dashboards`.
-5. Entre na pasta `Conexao Solidaria`.
-6. Abra o dashboard `Conexao Solidaria - Aplicacao`.
-
-### Validando o datasource
-
-1. Acesse `Connections` ou `Data sources`.
-2. Abra o datasource `Prometheus`.
-3. Clique em `Save & test`.
-4. O retorno esperado e uma mensagem de sucesso na conexao.
-
-### Paineis existentes
-
-O dashboard provisionado mostra:
-
-- Requisicoes HTTP por segundo por servico.
-- Total de doacoes processadas pelo worker.
-- Total de tentativas de doacao rejeitadas porque a campanha esta encerrada ou cancelada.
-
-Para gerar dados no dashboard, use as APIs via Swagger:
-
-- Identity Swagger: http://localhost:5001/swagger
-- Campaigns Swagger: http://localhost:5002/swagger
-
-### Criando um painel novo
-
-1. Acesse http://localhost:3000.
-2. Abra `Dashboards`.
-3. Clique em `New` > `New dashboard`.
-4. Clique em `Add visualization`.
-5. Selecione o datasource `Prometheus`.
-6. Use uma query PromQL.
-
-Exemplo para disponibilidade dos servicos:
-
-```promql
-up
-```
-
-Exemplo para requisicoes HTTP:
-
-```promql
-sum(rate(http_requests_received_total[1m])) by (job)
-```
-
-Exemplo para doacoes processadas:
-
-```promql
-sum(conexao_donations_processed_total)
-```
-
-Exemplo para tentativas rejeitadas por campanha encerrada ou cancelada:
-
-```promql
-sum(conexao_donations_rejected_total)
-```
-
-### Persistencia
-
-O Grafana usa um volume Docker nomeado explicitamente para facilitar identificacao:
-
-```yaml
-conexao-solidaria-grafana-data
-```
-
-Dashboards criados pela interface ficam salvos nesse volume. Dashboards versionados no repositorio devem ficar em:
-
-```text
-infra/grafana/dashboards
-```
-
-Depois de editar arquivos de provisionamento, reinicie:
+### Kubernetes (Kustomize)
+No Kubernetes a stack de observabilidade fica **ClusterIP**; acesse via `port-forward`
+(deploy completo em `ReadmeKubernetes.md`):
 
 ```powershell
-docker compose restart grafana
+kubectl port-forward -n conexao-solidaria svc/grafana     3000:3000
+kubectl port-forward -n conexao-solidaria svc/prometheus  9090:9090
+kubectl port-forward -n conexao-solidaria svc/rabbitmq   15672:15672
+kubectl port-forward -n conexao-solidaria svc/zabbix-web  8085:8080
 ```
 
-## Zabbix
+Credenciais vêm do Secret `conexao-solidaria-secret` (`grafana-admin-*`, `rabbitmq-*`,
+`zabbix-*`).
 
-### Como esta configurado
+## Gerando métricas para demonstração
 
-O Compose sobe dois servicos Zabbix:
+1. Login do gestor na Identity (`gestor@conexaosolidaria.local`, senha do Secret/`.env`).
+2. Autorize na Campaigns API com o token e crie uma campanha ativa.
+3. Cadastre um doador na Identity e faça `POST /api/doacoes` com o token do doador.
+4. Observe: **Grafana** (os 3 dashboards), **Prometheus** (`up`, `conexao_*`), **RabbitMQ**
+   (fila `doacoes-recebidas`) e **Zabbix** (disponibilidade + profundidade de fila).
 
-```yaml
-zabbix-server:
-  image: zabbix/zabbix-server-pgsql:alpine-latest
-
-zabbix-web:
-  image: zabbix/zabbix-web-nginx-pgsql:alpine-latest
-```
-
-O Zabbix usa o banco `zabbixdb`, criado pelo script:
-
-```text
-infra/postgres/init/01-create-databases.sql
-```
-
-Credenciais do banco:
-
-- Database: `zabbixdb`
-- Usuario: `zabbix`
-- Senha: `zabbix`
-
-### Acessando
-
-1. Suba a stack com `docker compose up --build`.
-2. Aguarde o Zabbix inicializar.
-3. Acesse http://localhost:8085.
-4. Login:
-   - Usuario: `Admin`
-   - Senha: `zabbix`
-
-Se a tela inicial demorar ou retornar erro de banco, aguarde mais alguns minutos e confira:
-
-```powershell
-docker compose logs -f zabbix-server zabbix-web postgres
-```
-
-### Configurando monitoramento HTTP das APIs
-
-Uma forma simples de demonstrar Zabbix neste projeto e monitorar os endpoints `/health` das APIs por HTTP.
-
-Crie um host para a aplicacao:
-
-1. Acesse o Zabbix.
-2. Abra `Data collection` > `Hosts`.  
-3. Clique em `Create host`.
-4. Configure:
-   - Host name: `Conexao Solidaria`
-   - Groups: crie ou selecione `Applications`
-   - Interfaces: pode manter sem agente se usar apenas itens HTTP.
-5. Salve.
-
-Crie um item para a Identity API:
-
-1. Abra o host `Conexao Solidaria`.
-2. Va em `Items`.
-3. Clique em `Create item`.
-4. Configure:
-   - Name: `Identity API health`
-   - Type: `HTTP agent`
-   - URL: `http://identity-api:8080/health`
-   - Request type: `GET`
-   - Type of information: `Text`
-   - Update interval: `30s`
-5. Salve.
-
-Crie itens equivalentes para:
-
-```text
-http://campaigns-api:8080/health
-http://donations-worker:8080/health
-```
-
-Essas URLs funcionam porque o Zabbix esta dentro da mesma rede Docker Compose das APIs.
-
-### Configurando triggers de indisponibilidade
-
-Para cada item HTTP, crie uma trigger:
-
-1. Abra o host `Conexao Solidaria`.
-2. Va em `Triggers`.
-3. Clique em `Create trigger`.
-4. Exemplo para Identity:
-   - Name: `Identity API indisponivel`
-   - Severity: `High`
-   - Expression: use o construtor de expressoes e selecione o item `Identity API health`.
-
-Uma regra simples e disparar quando o endpoint nao retorna dado recente. Exemplo conceitual:
-
-```text
-nodata(/Conexao Solidaria/Identity API health,2m)=1
-```
-
-Repita para Campaigns API e Donations Worker.
-
-### Configurando web scenario no Zabbix
-
-Outra opcao e usar `Web scenarios`:
-
-1. Abra o host `Conexao Solidaria`.
-2. Va em `Web scenarios`.
-3. Clique em `Create web scenario`.
-4. Name: `Conexao Solidaria health checks`.
-5. Adicione steps:
-   - `Identity health`: `http://identity-api:8080/health`
-   - `Campaigns health`: `http://campaigns-api:8080/health`
-   - `Worker health`: `http://donations-worker:8080/health`
-6. Expected status codes: `200`.
-7. Update interval: `30s`.
-8. Salve.
-
-Com isso, o Zabbix passa a registrar disponibilidade e tempo de resposta.
-
-## Kubernetes no Docker Desktop
-
-Ative Kubernetes no Docker Desktop e selecione o contexto local:
-
-```powershell
-kubectl config use-context docker-desktop
-```
-
-Construa as imagens locais:
-
-```powershell
-docker build -f src/ConexaoSolidaria.Identity.Api/Dockerfile -t conexao-solidaria/identity-api:local .
-docker build -f src/ConexaoSolidaria.Campaigns.Api/Dockerfile -t conexao-solidaria/campaigns-api:local .
-docker build -f src/ConexaoSolidaria.Donations.Worker/Dockerfile -t conexao-solidaria/donations-worker:local .
-```
-
-Suba os recursos:
-
-```powershell
-kubectl apply -f infra/k8s/conexao-solidaria.yaml
-kubectl get pods -n conexao-solidaria
-kubectl get svc -n conexao-solidaria
-```
-
-Acessos via NodePort:
-
-| Ferramenta | URL |
-| --- | --- |
-| Prometheus | http://localhost:30090 |
-| Grafana | http://localhost:30300 |
-| Zabbix | http://localhost:30085 |
-| Identity Swagger | http://localhost:30081/swagger |
-| Campaigns Swagger | http://localhost:30082/swagger |
-| RabbitMQ | http://localhost:31672 |
-
-No Kubernetes, o Prometheus usa os services internos:
-
-```text
-identity-api:8080
-campaigns-api:8080
-donations-worker:8080
-```
-
-Para remover a stack do Kubernetes:
-
-```powershell
-kubectl delete -f infra/k8s/conexao-solidaria.yaml
-```
-
-## Gerando metricas para demonstracao
-
-1. Acesse http://localhost:5001/swagger.
-2. Faca login com o gestor:
-   - Email: `gestor@conexaosolidaria.local`
-   - Senha: `Gestor@123456`
-3. Acesse http://localhost:5002/swagger.
-4. Autorize com o token do gestor.
-5. Crie uma campanha ativa.
-6. Cadastre um doador na Identity API.
-7. Autorize na Campaigns API com o token do doador.
-8. Envie uma doacao em `POST /api/doacoes`.
-9. Abra:
-   - RabbitMQ para ver a fila.
-   - Prometheus para consultar metricas.
-   - Grafana para ver o dashboard.
-   - Zabbix para ver disponibilidade dos endpoints.
+Para demonstrar falha/recuperação (parar o Worker, ver a fila crescer, o alerta de DLQ e a
+retomada), siga `docs/cenario-falha-recuperacao.md`. Para responder a incidentes (DLQ,
+outbox travada, 5xx), siga `docs/runbook.md`.
 
 ## Troubleshooting
 
-### Prometheus target DOWN
-
-Confira se os containers estao rodando:
-
-```powershell
-docker compose ps
-```
-
-Teste o endpoint local:
-
-```powershell
-curl http://localhost:5001/metrics
-curl http://localhost:5002/metrics
-curl http://localhost:5003/metrics
-```
-
-Confira os logs:
-
-```powershell
-docker compose logs -f prometheus identity-api campaigns-api donations-worker
-```
-
-### Grafana sem dados
-
-1. Verifique se Prometheus esta acessivel em http://localhost:9090.
-2. No Prometheus, rode:
-
-```promql
-up
-```
-
-3. No Grafana, valide o datasource `Prometheus`.
-4. Gere trafego nas APIs acessando os Swagger.
-5. Reinicie o Grafana se alterou provisionamento:
-
-```powershell
-docker compose restart grafana
-```
-
-### Zabbix nao abre
-
-O Zabbix pode demorar na primeira inicializacao. Confira logs:
-
-```powershell
-docker compose logs -f zabbix-server zabbix-web postgres
-```
-
-Se o banco ficou inconsistente durante testes locais, recrie os volumes:
-
-```powershell
-docker compose down -v
-docker compose up --build
-```
-
-### Porta em uso
-
-Portas usadas pela observabilidade:
-
-- Prometheus: `9090`
-- Grafana: `3000`
-- Zabbix Web: `8085`
-- Zabbix Server: `10051`
-
-Se alguma estiver ocupada, altere o mapeamento em `docker-compose.yml`.
-
-### Docker Desktop desligado
-
-Se aparecer erro parecido com `dockerDesktopLinuxEngine`, abra o Docker Desktop e aguarde o engine ficar pronto. Depois rode:
-
-```powershell
-docker compose ps
-```
-
-### Contexto Kubernetes errado
-
-Se `kubectl` tentar acessar outro cluster, selecione o Docker Desktop:
-
-```powershell
-kubectl config get-contexts
-kubectl config use-context docker-desktop
-```
+- **Target DOWN no Prometheus:** confira `docker compose ps` e teste
+  `curl http://localhost:5001/metrics` (5002/5003). Lembre: `gateway` fica DOWN no Compose
+  e `rabbitmq` exige o plugin `rabbitmq_prometheus`.
+- **Grafana sem dados:** valide o datasource `Prometheus`, rode `up` no Prometheus e gere
+  tráfego. Após editar provisioning: `docker compose restart grafana`.
+- **Painel de fila RabbitMQ vazio:** o plugin `rabbitmq_prometheus` não está habilitado -
+  os painéis `conexao_*` (outbox/DLQ) funcionam mesmo sem ele.
+- **Zabbix não abre:** primeira inicialização é lenta; veja
+  `docker compose logs -f zabbix-server zabbix-web postgres`. Se o banco corromper em testes
+  locais: `docker compose down -v && docker compose up --build`.
+- **Zabbix sem coletar filas:** preencha `{$RABBITMQ.USER}`/`{$RABBITMQ.PASSWORD}` no host e
+  confirme que o Zabbix server alcança `http://rabbitmq:15672`.

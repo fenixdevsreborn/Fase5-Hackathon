@@ -1,0 +1,270 @@
+# NetworkPolicy #K8S-009: default-deny de ingresso + allow-list explicito.
+# Politica de egresso permanece aberta de proposito (DNS/kube-dns funciona sem
+# regras extras); o hardening de egresso fica como TODO (exigiria allow-dns +
+# regras por servico). kubectl port-forward NAO passa por NetworkPolicy, entao a
+# demo (Grafana/RabbitMQ/Zabbix) continua acessivel mesmo com o default-deny.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+# Gateway: recebe do Web e do ingress-controller (ponto de entrada externo).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-to-gateway
+spec:
+  podSelector:
+    matchLabels:
+      app: gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: web
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        # Prometheus scrapeia /metrics do gateway (RPS/latencia de borda).
+        - podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Web: recebe apenas do ingress-controller.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-to-web
+spec:
+  podSelector:
+    matchLabels:
+      app: web
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Identity API: recebe do Gateway e do Prometheus (scrape /metrics).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-to-identity-api
+spec:
+  podSelector:
+    matchLabels:
+      app: identity-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: gateway
+        - podSelector:
+            matchLabels:
+              app: prometheus
+        - podSelector:
+            matchLabels:
+              app: zabbix-server
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Campaigns API: recebe do Gateway e do Prometheus (scrape /metrics).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-to-campaigns-api
+spec:
+  podSelector:
+    matchLabels:
+      app: campaigns-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: gateway
+        - podSelector:
+            matchLabels:
+              app: prometheus
+        - podSelector:
+            matchLabels:
+              app: zabbix-server
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Donations Worker: nao recebe trafego de negocio; so o scrape /metrics.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-to-donations-worker
+spec:
+  podSelector:
+    matchLabels:
+      app: donations-worker
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: prometheus
+        - podSelector:
+            matchLabels:
+              app: zabbix-server
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Postgres: recebe das APIs, do Worker e do Zabbix (server + web).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-to-postgres
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: identity-api
+        - podSelector:
+            matchLabels:
+              app: campaigns-api
+        - podSelector:
+            matchLabels:
+              app: donations-worker
+        # Jobs de migracao (RunMigrationsOnly) precisam conectar ao Postgres para aplicar o schema.
+        - podSelector:
+            matchLabels:
+              app: identity-migrations
+        - podSelector:
+            matchLabels:
+              app: campaigns-migrations
+        - podSelector:
+            matchLabels:
+              app: zabbix-server
+        - podSelector:
+            matchLabels:
+              app: zabbix-web
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# RabbitMQ: AMQP recebe da Campaigns API e do Worker.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-to-rabbitmq
+spec:
+  podSelector:
+    matchLabels:
+      app: rabbitmq
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: campaigns-api
+        - podSelector:
+            matchLabels:
+              app: donations-worker
+        # Web consome o fanout de notificacoes (tempo real via SignalR).
+        - podSelector:
+            matchLabels:
+              app: web
+      ports:
+        - protocol: TCP
+          port: 5672
+    # Prometheus scrapeia as metricas nativas do plugin rabbitmq_prometheus (:15692).
+    - from:
+        - podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - protocol: TCP
+          port: 15692
+---
+# Elasticsearch: recebe apenas da Campaigns API.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-to-elasticsearch
+spec:
+  podSelector:
+    matchLabels:
+      app: elasticsearch
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: campaigns-api
+      ports:
+        - protocol: TCP
+          port: 9200
+---
+# Prometheus: consultado pelo Grafana.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-to-prometheus
+spec:
+  podSelector:
+    matchLabels:
+      app: prometheus
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: grafana
+      ports:
+        - protocol: TCP
+          port: 9090
+---
+# Zabbix server: recebe do Zabbix web (frontend).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-to-zabbix-server
+spec:
+  podSelector:
+    matchLabels:
+      app: zabbix-server
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: zabbix-web
+      ports:
+        - protocol: TCP
+          port: 10051

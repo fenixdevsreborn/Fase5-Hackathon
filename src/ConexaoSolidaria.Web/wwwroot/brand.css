@@ -1,0 +1,195 @@
+/* Conexao Solidaria - tokens da identidade visual (complementam o MudTheme). */
+:root {
+    --brand-primary: #0b3b60;
+    --brand-secondary: #0f7594;
+    --brand-impact: #23a36d;
+    --brand-highlight: #f4b942;
+    --surface: #ffffff;
+    --surface-alt: #f4f7fa;
+    --text-primary: #14212b;
+    --text-secondary: #52616d;
+    --danger: #c43838;
+    --radius-md: 14px;
+    --shadow-soft: 0 6px 24px rgba(11, 59, 96, 0.08);
+    /* Cores de destaque da marca (hero e cartoes) */
+    --cs-blue: #2563eb;
+    --cs-blue-dark: #1d4ed8;
+    --cs-orange: #f97316;
+    --cs-orange-soft: #fff2e8;
+    --cs-ink: #16233a;
+}
+
+html, body {
+    min-height: 100%;
+    margin: 0;
+    background-color: #ffffff;
+    color: var(--text-primary);
+    font-family: Inter, "Segoe UI", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 120px;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+a {
+    color: inherit;
+}
+
+h1:focus {
+    outline: none;
+}
+
+.cs-footer {
+    background-color: var(--brand-primary);
+    color: #ffffff;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.cs-footer a {
+    color: var(--brand-highlight);
+    text-decoration: none;
+}
+
+.cs-footer a:hover {
+    text-decoration: underline;
+}
+
+/* Acessibilidade: respeitar prefers-reduced-motion. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* Reusable Hero-like Page Header */
+.cs-page-header {
+    position: relative;
+    padding: 38px 32px 42px;
+    margin-bottom: 36px;
+    border-radius: 24px;
+    background: 
+        radial-gradient(circle at 88% 12%, rgba(37, 99, 235, 0.06), transparent 28%),
+        radial-gradient(circle at 74% 88%, rgba(255, 116, 17, 0.04), transparent 32%),
+        #ffffff;
+    border: 1px solid rgba(12, 37, 75, 0.06);
+    box-shadow: 0 12px 42px rgba(18, 50, 91, 0.03);
+    overflow: hidden;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    animation: cs-page-header-enter 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.cs-page-header::before {
+    position: absolute;
+    top: -60px;
+    right: -40px;
+    width: 280px;
+    height: 280px;
+    border-radius: 50%;
+    border: 1px solid rgba(37, 99, 235, 0.06);
+    content: "";
+    pointer-events: none;
+}
+
+.cs-page-header::after {
+    position: absolute;
+    top: -110px;
+    right: -90px;
+    width: 380px;
+    height: 380px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 116, 17, 0.04);
+    content: "";
+    pointer-events: none;
+}
+
+.cs-page-header__content {
+    flex: 1 1 auto;
+    min-width: 0;
+    position: relative;
+    z-index: 2;
+}
+
+.cs-page-header__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border: 1px solid rgba(255, 111, 0, 0.08);
+    border-radius: 999px;
+    background: linear-gradient(90deg, #fff5ed, #fff0e7);
+    color: var(--cs-orange);
+    font-size: 0.8rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+
+.cs-page-header__badge ::deep .mud-icon-root {
+    color: var(--cs-orange) !important;
+    font-size: 1rem;
+}
+
+.cs-page-header__title {
+    margin: 0;
+    color: #071b3f;
+    font-size: clamp(1.8rem, 3vw, 2.5rem);
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    line-height: 1.15;
+}
+
+.cs-page-header__title span {
+    color: var(--cs-blue);
+}
+
+.cs-page-header__lead {
+    max-width: 750px;
+    margin: 10px 0 0;
+    color: #536987;
+    font-size: 1.02rem;
+    line-height: 1.55;
+}
+
+.cs-page-header__actions {
+    flex: 0 0 auto;
+    position: relative;
+    z-index: 2;
+}
+
+@keyframes cs-page-header-enter {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 768px) {
+    .cs-page-header {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 32px 24px;
+        gap: 16px;
+    }
+    .cs-page-header__actions {
+        align-self: flex-start;
+        width: 100%;
+    }
+    .cs-page-header__actions ::deep .mud-button {
+        width: 100%;
+    }
+}
+

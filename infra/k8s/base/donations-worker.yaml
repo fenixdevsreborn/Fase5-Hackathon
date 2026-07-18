@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: donations-worker
+  labels:
+    app: donations-worker
+    app.kubernetes.io/component: worker
+  annotations:
+    # Keel: auto-update quando o digest de :latest mudar no Docker Hub (ver infra/k8s/keel/).
+    keel.sh/policy: force
+    keel.sh/trigger: poll
+    keel.sh/pollSchedule: "@every 1m"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: donations-worker
+  template:
+    metadata:
+      labels:
+        app: donations-worker
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: donations-worker
+          image: conexao-solidaria/donations-worker:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: ASPNETCORE_URLS
+              value: http://+:8080
+            # B8: o Worker compartilha o CampaignsDbContext com a Campaigns.Api
+            # (mesmo bounded context, AD-23). O schema e aplicado pelo Job
+            # campaigns-migrations; o Worker NAO migra no boot para nao competir
+            # com a API/replicas pelo MigrateAsync. Default true no Compose/AppHost.
+            - name: Migrations__RunOnStartup
+              value: "false"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: postgres-password
+            - name: ConnectionStrings__CampaignsDb
+              value: Host=postgres;Port=5432;Database=campaignsdb;Username=postgres;Password=$(POSTGRES_PASSWORD)
+            - name: RabbitMq__HostName
+              value: rabbitmq
+            - name: RabbitMq__Port
+              value: "5672"
+            - name: RabbitMq__UserName
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: rabbitmq-user
+            - name: RabbitMq__Password
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: rabbitmq-password
+          # Worker: readiness em /health, liveness em /alive (nao reinicia por causa de deps).
+          startupProbe:
+            httpGet:
+              path: /alive
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /alive
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: donations-worker
+  labels:
+    app: donations-worker
+spec:
+  type: ClusterIP
+  selector:
+    app: donations-worker
+  ports:
+    # Exposto na 8080 apenas para o scrape do Prometheus/Zabbix em /metrics.
+    - name: http
+      port: 8080
+      targetPort: http

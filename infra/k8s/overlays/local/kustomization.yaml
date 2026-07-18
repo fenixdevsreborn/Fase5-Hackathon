@@ -1,0 +1,45 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: conexao-solidaria
+
+resources:
+  - ../../base
+
+# Imagens publicadas no Docker Hub (junonn5/conexao-solidaria-<svc>:latest) via
+# infra/k8s/push-dockerhub.ps1. O node baixa direto do registry (nao precisa mais
+# do ctr import). O Keel observa estas tags :latest e recria os pods quando o
+# digest muda - ver anotacoes keel.sh/* nos Deployments da base e infra/k8s/keel/.
+# O transformer remapeia tambem os Jobs de migracao, que reusam as imagens das APIs.
+images:
+  - name: conexao-solidaria/identity-api
+    newName: junonn5/conexao-solidaria-identity-api
+    newTag: latest
+  - name: conexao-solidaria/campaigns-api
+    newName: junonn5/conexao-solidaria-campaigns-api
+    newTag: latest
+  - name: conexao-solidaria/donations-worker
+    newName: junonn5/conexao-solidaria-donations-worker
+    newTag: latest
+  - name: conexao-solidaria/gateway
+    newName: junonn5/conexao-solidaria-gateway
+    newTag: latest
+  - name: conexao-solidaria/web
+    newName: junonn5/conexao-solidaria-web
+    newTag: latest
+
+# Ajustes especificos do ambiente local (Docker Desktop):
+#  - expoe Gateway e Web via NodePort (fallback sem nginx ingress controller);
+#  - reduz o consumo do Elasticsearch para caber na maquina de desenvolvimento.
+patches:
+  - path: resource-patches.yaml
+
+# Opcao alternativa ao Secret externo: descomente para gerar o Secret pelo Kustomize
+# a partir de um .env local (NAO versionar o .env). Mantido comentado porque o fluxo
+# padrao aplica infra/k8s/secret.yaml separadamente.
+# secretGenerator:
+#   - name: conexao-solidaria-secret
+#     envs:
+#       - secret.env
+# generatorOptions:
+#   disableNameSuffixHash: true

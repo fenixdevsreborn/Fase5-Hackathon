@@ -1,7 +1,11 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
+# Restore por projeto: copiar TODOS os .csproj referenciados (transitivamente) antes do restore
+# para maximizar o cache de camadas. Donations.Worker -> Contracts + Shared + ServiceDefaults.
+COPY ["src/ConexaoSolidaria.Contracts/ConexaoSolidaria.Contracts.csproj", "src/ConexaoSolidaria.Contracts/"]
 COPY ["src/ConexaoSolidaria.Shared/ConexaoSolidaria.Shared.csproj", "src/ConexaoSolidaria.Shared/"]
+COPY ["src/ConexaoSolidaria.ServiceDefaults/ConexaoSolidaria.ServiceDefaults.csproj", "src/ConexaoSolidaria.ServiceDefaults/"]
 COPY ["src/ConexaoSolidaria.Donations.Worker/ConexaoSolidaria.Donations.Worker.csproj", "src/ConexaoSolidaria.Donations.Worker/"]
 RUN dotnet restore "src/ConexaoSolidaria.Donations.Worker/ConexaoSolidaria.Donations.Worker.csproj"
 

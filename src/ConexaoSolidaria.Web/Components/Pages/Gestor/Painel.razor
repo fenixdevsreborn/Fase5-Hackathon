@@ -1,0 +1,321 @@
+@page "/gestor"
+@using System.Globalization
+@using ConexaoSolidaria.Web.Components.Dashboard
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Painel do gestor</PageTitle>
+
+<AuthorizeView Roles="GestorONG">
+    <Authorized>
+        <header class="cs-page-header">
+            <div class="cs-page-header__content">
+                <span class="cs-page-header__badge">
+                    <MudIcon Icon="@Icons.Material.Filled.Analytics" Size="Size.Small" />
+                    Painel do Gestor
+                </span>
+                <h1 class="cs-page-header__title">Gestão de <span>Campanhas</span></h1>
+                <p class="cs-page-header__lead">
+                    Visão de negócio e métricas de arrecadação das campanhas da sua ONG em tempo real.
+                </p>
+            </div>
+            <div class="cs-page-header__actions">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.AddCircle"
+                           Href="/gestor/campanhas/nova">
+                    Nova campanha
+                </MudButton>
+            </div>
+        </header>
+
+        @if (_carregando)
+        {
+            <div class="d-flex align-center justify-center pa-8">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+            </div>
+        }
+        else if (_erro)
+        {
+            <MudAlert Severity="Severity.Error" Class="my-4">
+                Não foi possível carregar os dados do painel.
+                <MudButton Variant="Variant.Text" Color="Color.Inherit" OnClick="CarregarAsync">Tentar novamente</MudButton>
+            </MudAlert>
+        }
+        else if (_campanhas.Count == 0)
+        {
+            <MudPaper Class="pa-8 my-4 d-flex flex-column align-center" Elevation="1">
+                <MudIcon Icon="@Icons.Material.Filled.Campaign" Size="Size.Large" Color="Color.Secondary" />
+                <MudText Typo="Typo.h6" Class="mt-2">Nenhuma campanha ainda</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                    Crie a primeira campanha para começar a arrecadar.
+                </MudText>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.AddCircle" Href="/gestor/campanhas/nova">
+                    Criar campanha
+                </MudButton>
+            </MudPaper>
+        }
+        else
+        {
+            <MudGrid Class="mb-2">
+                <MudItem xs="12" sm="6" md="4" lg="2">
+                    <KpiCard Titulo="Campanhas ativas" Valor="@_ativas.ToString(Br)"
+                             Icone="@Icons.Material.Filled.PlayCircle" Cor="Color.Success" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4" lg="3">
+                    <KpiCard Titulo="Total arrecadado" Valor="@FormatMoeda(_totalArrecadado)"
+                             Icone="@Icons.Material.Filled.Savings" Cor="Color.Primary" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4" lg="2">
+                    <KpiCard Titulo="Total de campanhas" Valor="@_campanhas.Count.ToString(Br)"
+                             Icone="@Icons.Material.Filled.Campaign" Cor="Color.Info" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4" lg="3">
+                    <KpiCard Titulo="Média por campanha ativa" Valor="@FormatMoeda(_mediaPorAtiva)"
+                             Icone="@Icons.Material.Filled.Analytics" Cor="Color.Tertiary" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4" lg="2">
+                    <KpiCard Titulo="Concluídas" Valor="@_concluidas.ToString(Br)"
+                             Icone="@Icons.Material.Filled.CheckCircle" Cor="Color.Secondary" />
+                </MudItem>
+            </MudGrid>
+
+            <MudGrid Class="mb-2">
+                <MudItem xs="12" md="5">
+                    <MudPaper Class="pa-4" Elevation="1" Style="height:100%">
+                        <MudText Typo="Typo.subtitle1" GutterBottom="true">Distribuição do arrecadado</MudText>
+                        <CampaignDistributionChart Campanhas="_campanhas" />
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="7">
+                    <MudPaper Class="pa-4" Elevation="1" Style="height:100%">
+                        <MudText Typo="Typo.subtitle1" GutterBottom="true">Arrecadado x meta (top campanhas)</MudText>
+                        <GoalProgressChart Campanhas="_campanhas" />
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            <MudPaper Class="pa-2" Elevation="1">
+                <MudTable Items="_campanhas" Hover="true" Dense="false" Breakpoint="Breakpoint.Sm" Class="pa-2">
+                    <ToolBarContent>
+                        <MudText Typo="Typo.subtitle1">Campanhas</MudText>
+                        <MudSpacer />
+                    </ToolBarContent>
+                    <HeaderContent>
+                        <MudTh>Título</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh Style="text-align:right">Meta</MudTh>
+                        <MudTh Style="text-align:right">Arrecadado</MudTh>
+                        <MudTh Style="text-align:right">% da meta</MudTh>
+                        <MudTh Style="text-align:right">Ações</MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="row">
+                        <MudTd DataLabel="Título">@row.Titulo</MudTd>
+                        <MudTd DataLabel="Status">
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                                     Color="@StatusCor(row.Status)">@StatusRotulo(row.Status)</MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Meta" Style="text-align:right">@FormatMoeda(row.MetaFinanceira)</MudTd>
+                        <MudTd DataLabel="Arrecadado" Style="text-align:right">@FormatMoeda(row.ValorTotalArrecadado)</MudTd>
+                        <MudTd DataLabel="% da meta" Style="text-align:right">@FormatPct(row)</MudTd>
+                        <MudTd DataLabel="Ações" Style="text-align:right">
+                            <div class="d-flex align-center justify-end flex-wrap" style="gap:4px">
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                               Color="Color.Primary"
+                                               Size="Size.Small"
+                                               Href="@($"/gestor/campanhas/{row.Id}/editar")"
+                                               aria-label="Editar campanha" />
+                                @if (EhAtiva(row.Status))
+                                {
+                                    <MudButton Variant="Variant.Text"
+                                               Color="Color.Success"
+                                               Size="Size.Small"
+                                               StartIcon="@Icons.Material.Filled.CheckCircle"
+                                               Disabled="_processando"
+                                               OnClick="@(() => ConcluirAsync(row))">
+                                        Concluir
+                                    </MudButton>
+                                    <MudButton Variant="Variant.Text"
+                                               Color="Color.Error"
+                                               Size="Size.Small"
+                                               StartIcon="@Icons.Material.Filled.Cancel"
+                                               Disabled="_processando"
+                                               OnClick="@(() => CancelarAsync(row))">
+                                        Cancelar
+                                    </MudButton>
+                                }
+                                else if (EhConcluidaOuCancelada(row.Status))
+                                {
+                                    <MudButton Variant="Variant.Text"
+                                               Color="Color.Primary"
+                                               Size="Size.Small"
+                                               StartIcon="@Icons.Material.Filled.PlayCircle"
+                                               Disabled="_processando"
+                                               OnClick="@(() => ReativarAsync(row))">
+                                        Reativar
+                                    </MudButton>
+                                }
+                            </div>
+                        </MudTd>
+                    </RowTemplate>
+                    <PagerContent>
+                        <MudTablePager />
+                    </PagerContent>
+                </MudTable>
+            </MudPaper>
+
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-3">
+                Métricas de negócio (via API).@(_totalTransparencia > 0
+                    ? $" {_totalTransparencia} campanha(s) na vitrine pública de transparência." : string.Empty)
+                Métricas técnicas ficam no Grafana/Prometheus.
+            </MudText>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert Severity="Severity.Warning" Class="my-4">
+            Área restrita a gestores de ONG.
+            <MudLink Href="/entrar">Entrar</MudLink>
+        </MudAlert>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private static readonly CultureInfo Br = CultureInfo.GetCultureInfo("pt-BR");
+
+    private bool _carregando = true;
+    private bool _erro;
+    private bool _processando;
+
+    private IReadOnlyList<CampanhaDto> _campanhas = Array.Empty<CampanhaDto>();
+    private int _totalTransparencia;
+
+    private int _ativas;
+    private int _concluidas;
+    private decimal _totalArrecadado;
+    private decimal _mediaPorAtiva;
+
+    protected override async Task OnInitializedAsync() => await CarregarAsync();
+
+    private async Task CarregarAsync()
+    {
+        _carregando = true;
+        _erro = false;
+        try
+        {
+            var pagina = await Api.BuscarCampanhasAsync(null, 1, 100);
+            var transparencia = await Api.TransparenciaAsync();
+
+            _campanhas = pagina.Items;
+            _totalTransparencia = transparencia.Count;
+
+            _ativas = _campanhas.Count(c => string.Equals(c.Status, "Ativa", StringComparison.OrdinalIgnoreCase));
+            _concluidas = _campanhas.Count(c => string.Equals(c.Status, "Concluida", StringComparison.OrdinalIgnoreCase));
+            _totalArrecadado = _campanhas.Sum(c => c.ValorTotalArrecadado);
+            _mediaPorAtiva = _ativas > 0
+                ? _campanhas.Where(c => string.Equals(c.Status, "Ativa", StringComparison.OrdinalIgnoreCase))
+                            .Sum(c => c.ValorTotalArrecadado) / _ativas
+                : 0m;
+        }
+        catch
+        {
+            _erro = true;
+        }
+        finally
+        {
+            _carregando = false;
+        }
+    }
+
+    private static bool EhAtiva(string status) =>
+        string.Equals(status, "Ativa", StringComparison.OrdinalIgnoreCase);
+
+    private static bool EhConcluidaOuCancelada(string status) =>
+        string.Equals(status, "Concluida", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "Cancelada", StringComparison.OrdinalIgnoreCase);
+
+    private Task ConcluirAsync(CampanhaDto campanha) => ExecutarAcaoAsync(
+        campanha,
+        "Concluir campanha",
+        $"Deseja concluir a campanha \"{campanha.Titulo}\"? Ela deixara de aceitar novas doacoes.",
+        "Concluir",
+        Api.ConcluirCampanhaAsync,
+        "Campanha concluida.");
+
+    private Task CancelarAsync(CampanhaDto campanha) => ExecutarAcaoAsync(
+        campanha,
+        "Cancelar campanha",
+        $"Deseja cancelar a campanha \"{campanha.Titulo}\"? Esta acao interrompe a arrecadacao.",
+        "Cancelar campanha",
+        Api.CancelarCampanhaAsync,
+        "Campanha cancelada.");
+
+    private Task ReativarAsync(CampanhaDto campanha) => ExecutarAcaoAsync(
+        campanha,
+        "Reativar campanha",
+        $"Deseja reativar a campanha \"{campanha.Titulo}\"? Ela voltara a aceitar doacoes.",
+        "Reativar",
+        Api.AtivarCampanhaAsync,
+        "Campanha reativada.");
+
+    private async Task ExecutarAcaoAsync(
+        CampanhaDto campanha,
+        string titulo,
+        string mensagem,
+        string confirmarTexto,
+        Func<Guid, CancellationToken, Task<CampanhaDto?>> acao,
+        string sucessoMensagem)
+    {
+        var confirmado = await DialogService.ShowMessageBoxAsync(
+            titulo, mensagem, yesText: confirmarTexto, cancelText: "Voltar");
+        if (confirmado != true)
+        {
+            return;
+        }
+
+        _processando = true;
+        try
+        {
+            var atualizada = await acao(campanha.Id, CancellationToken.None);
+            if (atualizada is null)
+            {
+                Snackbar.Add("Nao foi possivel concluir a acao. Verifique o status da campanha e tente novamente.", Severity.Error);
+                return;
+            }
+
+            Snackbar.Add(sucessoMensagem, Severity.Success);
+            await CarregarAsync();
+        }
+        catch
+        {
+            Snackbar.Add("Erro ao processar a acao. Tente novamente.", Severity.Error);
+        }
+        finally
+        {
+            _processando = false;
+        }
+    }
+
+    private static string FormatMoeda(decimal valor) => valor.ToString("C", Br);
+
+    private static string FormatPct(CampanhaDto c) =>
+        c.MetaFinanceira > 0
+            ? (c.ValorTotalArrecadado / c.MetaFinanceira).ToString("P0", Br)
+            : "—";
+
+    private static Color StatusCor(string status) => status switch
+    {
+        "Ativa" => Color.Success,
+        "Concluida" => Color.Info,
+        "Cancelada" => Color.Error,
+        _ => Color.Default,
+    };
+
+    private static string StatusRotulo(string status) => status switch
+    {
+        "Concluida" => "Concluída",
+        _ => status,
+    };
+}

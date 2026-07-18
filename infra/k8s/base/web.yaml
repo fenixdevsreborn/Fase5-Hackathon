@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  labels:
+    app: web
+    app.kubernetes.io/component: web
+  annotations:
+    # Keel: auto-update quando o digest de :latest mudar no Docker Hub (ver infra/k8s/keel/).
+    keel.sh/policy: force
+    keel.sh/trigger: poll
+    keel.sh/pollSchedule: "@every 1m"
+spec:
+  # replicas: 1 e proposital. O Web e Blazor Server (circuitos SignalR + JWT em
+  # ProtectedLocalStorage via Data Protection). Escalar exige sticky sessions no
+  # Ingress + volume RWX compartilhado das Data Protection keys (ver README).
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: conexao-solidaria/web:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: ASPNETCORE_URLS
+              value: http://+:8080
+            # Data Protection keys em volume gravavel. Em replica unica, o emptyDir /tmp
+            # basta. Para escalar o Web, troque por um PVC ReadWriteMany compartilhado.
+            - name: DataProtection__KeysPath
+              value: /tmp/keys
+            # O Web chama "http://gateway" (base address no Program.cs) -> service discovery/DNS.
+            # RabbitMQ: o Web consome o fanout de notificacoes (conexao-solidaria.notifications)
+            # para empurrar atualizacoes em tempo real via SignalR. Consumer resiliente (fallback = polling).
+            - name: RabbitMq__HostName
+              value: rabbitmq
+            - name: RabbitMq__Port
+              value: "5672"
+            - name: RabbitMq__UserName
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: rabbitmq-user
+            - name: RabbitMq__Password
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: rabbitmq-password
+            # IA (Assistente Solidario + criacao assistida). Chave OPCIONAL: ausente/vazia,
+            # o Web sobe normalmente e esconde as features de IA (degradacao graciosa).
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: openai-api-key
+                  optional: true
+          startupProbe:
+            httpGet:
+              path: /alive
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /alive
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  labels:
+    app: web
+spec:
+  type: ClusterIP
+  selector:
+    app: web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

@@ -3,7 +3,7 @@ using System.Security.Claims;
 using System.Text;
 using ConexaoSolidaria.Identity.Api.Domain;
 using ConexaoSolidaria.Identity.Api.Responses;
-using ConexaoSolidaria.Shared.Auth;
+using ConexaoSolidaria.Contracts.Auth;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 

@@ -1,0 +1,18 @@
+apiVersion: 1
+
+# Datasource Tempo: permite explorar os traces distribuidos (app -> OTel Collector
+# -> Tempo) na aba Explore do Grafana. A API de consulta do Tempo responde em :3200.
+datasources:
+  - name: Tempo
+    uid: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: true
+    jsonData:
+      # Correlaciona traces -> metricas do servico (exemplars), reutilizando o
+      # datasource Prometheus ja provisionado.
+      tracesToMetrics:
+        datasourceUid: Prometheus
+      serviceMap:
+        datasourceUid: Prometheus

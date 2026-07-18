@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zabbix-server
+  labels:
+    app: zabbix-server
+    app.kubernetes.io/component: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zabbix-server
+  template:
+    metadata:
+      labels:
+        app: zabbix-server
+    spec:
+      containers:
+        - name: zabbix-server
+          image: zabbix/zabbix-server-pgsql:alpine-latest
+          ports:
+            - name: trapper
+              containerPort: 10051
+          env:
+            - name: DB_SERVER_HOST
+              value: postgres
+            - name: POSTGRES_DB
+              value: zabbixdb
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: zabbix-user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: zabbix-password
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zabbix-server
+  labels:
+    app: zabbix-server
+spec:
+  type: ClusterIP
+  selector:
+    app: zabbix-server
+  ports:
+    - name: trapper
+      port: 10051
+      targetPort: trapper
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zabbix-web
+  labels:
+    app: zabbix-web
+    app.kubernetes.io/component: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zabbix-web
+  template:
+    metadata:
+      labels:
+        app: zabbix-web
+    spec:
+      containers:
+        - name: zabbix-web
+          image: zabbix/zabbix-web-nginx-pgsql:alpine-latest
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: ZBX_SERVER_HOST
+              value: zabbix-server
+            - name: DB_SERVER_HOST
+              value: postgres
+            - name: POSTGRES_DB
+              value: zabbixdb
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: zabbix-user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: zabbix-password
+            - name: PHP_TZ
+              value: America/Sao_Paulo
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zabbix-web
+  labels:
+    app: zabbix-web
+spec:
+  # ClusterIP #K8S-004: UI do Zabbix acessada na demo via kubectl port-forward.
+  type: ClusterIP
+  selector:
+    app: zabbix-web
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

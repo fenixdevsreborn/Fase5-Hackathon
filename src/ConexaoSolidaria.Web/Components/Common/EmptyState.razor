@@ -1,0 +1,30 @@
+<div class="d-flex flex-column align-center justify-center py-10 px-4" style="text-align:center;">
+    <MudIcon Icon="@Icon" Color="Color.Secondary" Style="font-size:3.5rem;" />
+    <MudText Typo="Typo.h6" Class="mt-3">@Title</MudText>
+    @if (!string.IsNullOrWhiteSpace(Description))
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1" Style="max-width:440px;">
+            @Description
+        </MudText>
+    }
+    @if (ChildContent is not null)
+    {
+        <div class="mt-4">
+            @ChildContent
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>Icone Material exibido no topo. Padrao: caixa vazia.</summary>
+    [Parameter] public string Icon { get; set; } = Icons.Material.Filled.Inbox;
+
+    /// <summary>Titulo curto do estado vazio.</summary>
+    [Parameter] public string Title { get; set; } = "Nada por aqui";
+
+    /// <summary>Mensagem opcional de apoio.</summary>
+    [Parameter] public string? Description { get; set; }
+
+    /// <summary>Conteudo opcional (ex.: botao de acao / tentar novamente).</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

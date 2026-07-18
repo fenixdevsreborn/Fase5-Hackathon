@@ -1,0 +1,283 @@
+# =============================================================================
+# Template Zabbix - Conexao Solidaria (monitoracao REAL de disponibilidade)
+# -----------------------------------------------------------------------------
+# Formato: export nativo do Zabbix 7.0 (compativel com 6.0+). Este arquivo pode
+# ser importado diretamente pela interface web do Zabbix.
+#
+# COMO IMPORTAR
+#   1. Acesse a UI do Zabbix (docker-compose: http://localhost:8085 |
+#      k8s NodePort: http://<node>:30085). Login padrao Admin / zabbix.
+#   2. Data collection -> Templates -> Import.
+#   3. Selecione este arquivo (conexao-solidaria-template.yaml).
+#      Marque "Create new" / "Update existing" e confirme.
+#   4. O template "Conexao Solidaria" e o grupo "Templates/Applications" sao
+#      criados automaticamente.
+#
+# COMO ASSOCIAR A UM HOST
+#   1. Data collection -> Hosts -> Create host (ex.: nome "conexao-solidaria").
+#      Adicione o host a um grupo (ex.: "Conexao Solidaria/App"). Como todos os
+#      itens sao HTTP agent / web monitoring executados pelo Zabbix server, a
+#      interface do host pode ser um agente "dummy" (127.0.0.1) - nao e usada.
+#   2. Aba Templates -> Link new templates -> "Conexao Solidaria".
+#   3. Aba Macros -> Inherited and host macros -> ajuste as macros abaixo
+#      (principalmente {$RABBITMQ.USER} e {$RABBITMQ.PASSWORD}).
+#
+# O QUE E MONITORADO
+#   - /health das APIs Identity, Campaigns e do Donations Worker (rspcode + tempo)
+#     via Web monitoring -> gera automaticamente os itens web.test.rspcode[...],
+#     web.test.time[...,resp] e web.test.fail[...].
+#   - Vitrine publica GET /api/campanhas/transparencia (rspcode).
+#   - Profundidade da fila 'doacoes-recebidas' e da DLQ 'doacoes.dead-letter'
+#     via RabbitMQ Management HTTP API (/api/queues/%2f/<fila>, campo .messages).
+#
+# MACROS (ajuste por host conforme o ambiente)
+#   {$IDENTITY.URL}       Base da Identity API      (compose: http://identity-api:8080)
+#   {$CAMPAIGNS.URL}      Base da Campaigns API     (compose: http://campaigns-api:8080)
+#   {$WORKER.URL}         Base do Donations Worker  (compose: http://donations-worker:8080)
+#   {$RABBITMQ.API.URL}   Base da Management API    (compose: http://rabbitmq:15672)
+#   {$RABBITMQ.USER}      Usuario da Management API (= RABBITMQ_USER do .env)
+#   {$RABBITMQ.PASSWORD}  Senha da Management API   (= RABBITMQ_PASSWORD do .env)
+#   {$QUEUE.DEPTH.MAX}    Limite de mensagens acumuladas na fila principal (default 20)
+#   {$HTTP.LATENCY.MAX}   Limite de latencia HTTP em segundos (default 1)
+#
+# NOTA: o Zabbix server precisa alcancar os servicos pela rede. No docker-compose
+# ele resolve os nomes de servico (identity-api, campaigns-api, rabbitmq...) por
+# estarem na mesma rede. Fora dessa rede, aponte as macros para host:porta
+# publicados (ex.: http://host.docker.internal:5001 para a Identity).
+# =============================================================================
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 4bd979174a6c46e9b18f55aa25253245
+      name: Templates/Applications
+  templates:
+    - uuid: 306e5a07bc4b48d5bf8a4c54d587905f
+      template: Conexao Solidaria
+      name: Conexao Solidaria
+      description: |
+        Monitoracao de disponibilidade e saude da plataforma Conexao Solidaria:
+        health das APIs/worker (rspcode + latencia via web monitoring), vitrine
+        publica de transparencia e profundidade das filas RabbitMQ (principal e DLQ).
+      groups:
+        - name: Templates/Applications
+      items:
+        - uuid: df66b192b58c42188798e8bfa4e9afe4
+          name: 'RabbitMQ: fila doacoes-recebidas (mensagens prontas + nao-ack)'
+          type: HTTP_AGENT
+          key: rabbitmq.queue.doacoes_recebidas.messages
+          delay: 30s
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: msgs
+          description: |
+            Profundidade da fila principal de doacoes. Le o campo .messages de
+            GET {$RABBITMQ.API.URL}/api/queues/%2f/doacoes-recebidas (vhost "/"
+            codificado como %2f). Se subir, o Donations Worker nao esta drenando.
+          url: '{$RABBITMQ.API.URL}/api/queues/%2f/doacoes-recebidas'
+          status_codes: '200'
+          authtype: BASIC
+          username: '{$RABBITMQ.USER}'
+          password: '{$RABBITMQ.PASSWORD}'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.messages'
+          tags:
+            - tag: component
+              value: rabbitmq
+            - tag: queue
+              value: doacoes-recebidas
+          triggers:
+            - uuid: 68a93b7a1a3544f19af6ecbb21272222
+              expression: 'min(/Conexao Solidaria/rabbitmq.queue.doacoes_recebidas.messages,2m)>{$QUEUE.DEPTH.MAX}'
+              name: 'Fila doacoes-recebidas acima de {$QUEUE.DEPTH.MAX} por 2min'
+              priority: HIGH
+              description: |
+                Mensagens acumulando na fila principal por 2 minutos. Indica worker
+                parado/lento ou throughput de consumo abaixo da producao.
+              tags:
+                - tag: scope
+                  value: backlog
+        - uuid: b28d4e8ee8fb41c182524cd6d54bb4b6
+          name: 'RabbitMQ: DLQ doacoes.dead-letter (mensagens)'
+          type: HTTP_AGENT
+          key: rabbitmq.queue.dead_letter.messages
+          delay: 30s
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          units: msgs
+          description: |
+            Profundidade da dead-letter queue. Le .messages de
+            GET {$RABBITMQ.API.URL}/api/queues/%2f/doacoes.dead-letter.
+            Qualquer valor > 0 significa doacao que esgotou as 3 tentativas.
+          url: '{$RABBITMQ.API.URL}/api/queues/%2f/doacoes.dead-letter'
+          status_codes: '200'
+          authtype: BASIC
+          username: '{$RABBITMQ.USER}'
+          password: '{$RABBITMQ.PASSWORD}'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.messages'
+          tags:
+            - tag: component
+              value: rabbitmq
+            - tag: queue
+              value: doacoes.dead-letter
+          triggers:
+            - uuid: e4aace50f00643548d544d737a66144d
+              expression: 'last(/Conexao Solidaria/rabbitmq.queue.dead_letter.messages)>0'
+              name: 'DLQ doacoes.dead-letter com mensagens (>0)'
+              priority: HIGH
+              description: |
+                Ha doacao(oes) na dead-letter queue. Investigar payload/erro no
+                RabbitMQ Management e reprocessar apos correcao (ver runbook).
+              tags:
+                - tag: scope
+                  value: dead-letter
+      httptests:
+        - uuid: 31fbed721e05443e92d174c42748ab7c
+          name: Identity API health
+          delay: 1m
+          steps:
+            - name: health
+              url: '{$IDENTITY.URL}/health'
+              status_codes: '200'
+              required: ''
+          tags:
+            - tag: service
+              value: identity-api
+        - uuid: 93d5b8b5b77648ea812bdcbf44bb00e8
+          name: Campaigns API health
+          delay: 1m
+          steps:
+            - name: health
+              url: '{$CAMPAIGNS.URL}/health'
+              status_codes: '200'
+              required: ''
+          tags:
+            - tag: service
+              value: campaigns-api
+        - uuid: e0220c7e993040bca8d5abeb63dd2fb2
+          name: Donations Worker health
+          delay: 1m
+          steps:
+            - name: health
+              url: '{$WORKER.URL}/health'
+              status_codes: '200'
+              required: ''
+          tags:
+            - tag: service
+              value: donations-worker
+        - uuid: b36576aaac5b40dc9458ce576916e476
+          name: Vitrine transparencia
+          delay: 1m
+          steps:
+            - name: transparencia
+              url: '{$CAMPAIGNS.URL}/api/campanhas/transparencia'
+              status_codes: '200'
+              required: ''
+          tags:
+            - tag: service
+              value: campaigns-api
+            - tag: scope
+              value: publico
+      triggers:
+        - uuid: e58acc2f942741c7bcd7a1ef35a763a0
+          expression: 'min(/Conexao Solidaria/web.test.fail[Identity API health],2m)>0'
+          name: 'Identity API indisponivel por 2min'
+          priority: HIGH
+          description: 'GET {$IDENTITY.URL}/health falhando (rspcode != 200 ou sem resposta) por 2 minutos.'
+          tags:
+            - tag: service
+              value: identity-api
+            - tag: scope
+              value: availability
+        - uuid: 5ea54a8cb28741b090e5649341df9c7f
+          expression: 'min(/Conexao Solidaria/web.test.fail[Campaigns API health],2m)>0'
+          name: 'Campaigns API indisponivel por 2min'
+          priority: HIGH
+          description: 'GET {$CAMPAIGNS.URL}/health falhando por 2 minutos.'
+          tags:
+            - tag: service
+              value: campaigns-api
+            - tag: scope
+              value: availability
+        - uuid: e77e6bed77484ae2aa48a04e30916654
+          expression: 'min(/Conexao Solidaria/web.test.fail[Donations Worker health],2m)>0'
+          name: 'Donations Worker indisponivel por 2min'
+          priority: HIGH
+          description: 'GET {$WORKER.URL}/health falhando por 2 minutos. Consumo da fila esta parado.'
+          tags:
+            - tag: service
+              value: donations-worker
+            - tag: scope
+              value: availability
+        - uuid: 45df2d85da764e16b1662730cde07931
+          expression: 'min(/Conexao Solidaria/web.test.time[Identity API health,health,resp],2m)>{$HTTP.LATENCY.MAX}'
+          name: 'Identity API lenta: /health > {$HTTP.LATENCY.MAX}s'
+          priority: WARNING
+          description: 'Tempo de resposta do /health da Identity acima do limite por 2 minutos.'
+          tags:
+            - tag: service
+              value: identity-api
+            - tag: scope
+              value: latency
+        - uuid: 21642c0a93264e8b92c05542a3f5ea58
+          expression: 'min(/Conexao Solidaria/web.test.time[Campaigns API health,health,resp],2m)>{$HTTP.LATENCY.MAX}'
+          name: 'Campaigns API lenta: /health > {$HTTP.LATENCY.MAX}s'
+          priority: WARNING
+          description: 'Tempo de resposta do /health da Campaigns acima do limite por 2 minutos.'
+          tags:
+            - tag: service
+              value: campaigns-api
+            - tag: scope
+              value: latency
+        - uuid: 437b982b3ce945f1b8638a3f223d18d0
+          expression: 'min(/Conexao Solidaria/web.test.time[Donations Worker health,health,resp],2m)>{$HTTP.LATENCY.MAX}'
+          name: 'Donations Worker lento: /health > {$HTTP.LATENCY.MAX}s'
+          priority: WARNING
+          description: 'Tempo de resposta do /health do Worker acima do limite por 2 minutos.'
+          tags:
+            - tag: service
+              value: donations-worker
+            - tag: scope
+              value: latency
+        - uuid: f5a23639606d4d55b2ac5a204fa25361
+          expression: 'min(/Conexao Solidaria/web.test.fail[Vitrine transparencia],2m)>0'
+          name: 'Vitrine de transparencia retornando erro'
+          priority: AVERAGE
+          description: 'GET {$CAMPAIGNS.URL}/api/campanhas/transparencia nao retorna 200 por 2 minutos (endpoint publico).'
+          tags:
+            - tag: service
+              value: campaigns-api
+            - tag: scope
+              value: publico
+      macros:
+        - macro: '{$IDENTITY.URL}'
+          value: 'http://identity-api:8080'
+          description: 'Base URL da Identity API alcancavel pelo Zabbix server.'
+        - macro: '{$CAMPAIGNS.URL}'
+          value: 'http://campaigns-api:8080'
+          description: 'Base URL da Campaigns API alcancavel pelo Zabbix server.'
+        - macro: '{$WORKER.URL}'
+          value: 'http://donations-worker:8080'
+          description: 'Base URL do Donations Worker (/health) alcancavel pelo Zabbix server.'
+        - macro: '{$RABBITMQ.API.URL}'
+          value: 'http://rabbitmq:15672'
+          description: 'Base da RabbitMQ Management HTTP API (porta 15672).'
+        - macro: '{$RABBITMQ.USER}'
+          value: ''
+          description: 'Usuario da Management API (mesmo valor de RABBITMQ_USER). Definir por host.'
+        - macro: '{$RABBITMQ.PASSWORD}'
+          type: SECRET_TEXT
+          value: ''
+          description: 'Senha da Management API (mesmo valor de RABBITMQ_PASSWORD). Definir por host.'
+        - macro: '{$QUEUE.DEPTH.MAX}'
+          value: '20'
+          description: 'Limite de mensagens acumuladas na fila doacoes-recebidas antes do alerta.'
+        - macro: '{$HTTP.LATENCY.MAX}'
+          value: '1'
+          description: 'Limite de latencia (segundos) dos endpoints /health antes do alerta.'

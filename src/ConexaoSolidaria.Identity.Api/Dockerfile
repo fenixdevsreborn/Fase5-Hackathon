@@ -1,7 +1,10 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-COPY ["src/ConexaoSolidaria.Shared/ConexaoSolidaria.Shared.csproj", "src/ConexaoSolidaria.Shared/"]
+# Restore por projeto: copiar TODOS os .csproj referenciados (transitivamente) antes do restore
+# para maximizar o cache de camadas. Identity.Api -> Contracts + ServiceDefaults.
+COPY ["src/ConexaoSolidaria.Contracts/ConexaoSolidaria.Contracts.csproj", "src/ConexaoSolidaria.Contracts/"]
+COPY ["src/ConexaoSolidaria.ServiceDefaults/ConexaoSolidaria.ServiceDefaults.csproj", "src/ConexaoSolidaria.ServiceDefaults/"]
 COPY ["src/ConexaoSolidaria.Identity.Api/ConexaoSolidaria.Identity.Api.csproj", "src/ConexaoSolidaria.Identity.Api/"]
 RUN dotnet restore "src/ConexaoSolidaria.Identity.Api/ConexaoSolidaria.Identity.Api.csproj"
 

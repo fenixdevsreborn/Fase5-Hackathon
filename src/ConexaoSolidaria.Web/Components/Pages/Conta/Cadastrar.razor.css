@@ -1,0 +1,90 @@
+.cs-login-card {
+    position: relative;
+    z-index: 1;
+    width: min(100%, 480px);
+    padding: 30px 36px 24px;
+    border: 1px solid rgba(30, 65, 112, .09);
+    border-radius: 22px;
+    background: rgba(255, 255, 255, .97);
+    box-shadow: 0 18px 50px rgba(34, 61, 99, .1);
+}
+
+.cs-login-card__brand {
+    width: 290px;
+    height: 115px;
+    display: flex;
+    margin: 0 auto 6px;
+    align-items: center;
+    justify-content: center;
+}
+
+.cs-login-card__brand img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.cs-login-card__header h1 {
+    margin: 0;
+    color: #071b45;
+    font-size: 1.82rem;
+    font-weight: 800;
+    letter-spacing: -.035em;
+    line-height: 1.2;
+}
+
+.cs-login-card__header p {
+    margin: 6px 0 24px;
+    color: #6a7894;
+    font-size: .88rem;
+}
+
+.cs-login-card__header span {
+    color: #0875fa;
+    font-weight: 600;
+}
+
+.cs-login-card__security {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    margin: 20px 0 0;
+    color: #8a99b1;
+    font-size: .69rem;
+}
+
+.cs-login-card__security ::deep .mud-icon-root {
+    font-size: .95rem;
+}
+
+/* Botao CADASTRAR num azul vivo (mesma familia do CTA da home), no lugar do azul-marinho
+   padrao do tema. ::deep + .mud-button-root eleva a especificidade acima da regra do MudBlazor. */
+.cs-login-card ::deep .cs-register-submit.mud-button-root {
+    background: linear-gradient(135deg, #1670f8 0%, #075de7 100%);
+    box-shadow: 0 10px 24px rgba(22, 112, 248, .28);
+    transition: background .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.cs-login-card ::deep .cs-register-submit.mud-button-root:hover {
+    background: linear-gradient(135deg, #075de7 0%, #064fc5 100%);
+    box-shadow: 0 14px 30px rgba(22, 112, 248, .34);
+    transform: translateY(-1px);
+}
+
+@media (max-width: 520px) {
+    .cs-login-card {
+        width: 100%;
+        min-height: 100dvh;
+        padding: 28px 24px 22px;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+    .cs-login-card__brand {
+        width: 270px;
+        height: 110px;
+    }
+}

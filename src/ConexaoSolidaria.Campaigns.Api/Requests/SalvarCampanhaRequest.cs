@@ -1,4 +1,4 @@
-using ConexaoSolidaria.Campaigns.Api.Domain;
+using ConexaoSolidaria.Shared.Domain;
 
 namespace ConexaoSolidaria.Campaigns.Api.Requests;
 
@@ -8,4 +8,5 @@ public sealed record SalvarCampanhaRequest(
     DateTimeOffset DataInicio,
     DateTimeOffset DataFim,
     decimal MetaFinanceira,
-    CampaignStatus Status);
+    CampaignStatus Status,
+    CampaignCategory Categoria = CampaignCategory.Outros);

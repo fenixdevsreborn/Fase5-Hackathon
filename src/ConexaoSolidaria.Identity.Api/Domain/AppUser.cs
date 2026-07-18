@@ -1,5 +1,5 @@
-using ConexaoSolidaria.Shared.Auth;
-using ConexaoSolidaria.Shared.Validation;
+using ConexaoSolidaria.Contracts.Auth;
+using CpfValue = ConexaoSolidaria.Contracts.ValueObjects.Cpf;
 
 namespace ConexaoSolidaria.Identity.Api.Domain;
 
@@ -25,16 +25,14 @@ public sealed class AppUser
 
     public static AppUser CreateDoador(string nomeCompleto, string email, string cpf, string passwordHash)
     {
-        if (!CpfValidator.IsValid(cpf))
-        {
-            throw new ArgumentException("CPF invalido.", nameof(cpf));
-        }
+        // Valida via Value Object (digitos verificadores) e persiste o valor normalizado (11 digitos).
+        var cpfVo = CpfValue.Create(cpf);
 
         return new AppUser
         {
             NomeCompleto = nomeCompleto.Trim(),
             Email = NormalizeEmail(email),
-            Cpf = CpfValidator.Normalize(cpf),
+            Cpf = cpfVo.Value,
             PasswordHash = passwordHash,
             Role = ApplicationRoles.Doador
         };
@@ -42,11 +40,14 @@ public sealed class AppUser
 
     public static AppUser CreateGestor(string nomeCompleto, string email, string cpf, string passwordHash)
     {
+        // Valida via Value Object (digitos verificadores) e persiste o valor normalizado (11 digitos).
+        var cpfVo = CpfValue.Create(cpf);
+
         return new AppUser
         {
             NomeCompleto = nomeCompleto.Trim(),
             Email = NormalizeEmail(email),
-            Cpf = CpfValidator.Normalize(cpf),
+            Cpf = cpfVo.Value,
             PasswordHash = passwordHash,
             Role = ApplicationRoles.GestorOng
         };

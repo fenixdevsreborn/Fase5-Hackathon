@@ -1,0 +1,228 @@
+@* Formulário reutilizável de campanha (criação e edição). Validação client-side melhora a
+   UX, mas a verdade é o backend: em 400 a página exibe ErrorMessage. *@
+@using System.Globalization
+
+<MudForm @ref="_form">
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4" Variant="Variant.Filled">@ErrorMessage</MudAlert>
+    }
+
+    <MudGrid>
+        <MudItem xs="12">
+            <MudTextField T="string"
+                          @bind-Value="_titulo"
+                          Label="Título"
+                          Required="true"
+                          RequiredError="Informe o título."
+                          Immediate="true"
+                          Counter="160"
+                          MaxLength="160"
+                          Validation="@(new Func<string?, string?>(ValidarTitulo))" />
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudTextField T="string"
+                          @bind-Value="_descricao"
+                          Label="Descrição"
+                          Required="true"
+                          RequiredError="Informe a descrição."
+                          Lines="4"
+                          Immediate="true"
+                          Counter="1000"
+                          MaxLength="1000"
+                          Validation="@(new Func<string?, string?>(ValidarDescricao))" />
+        </MudItem>
+
+        <MudItem xs="12" sm="6">
+            <MudDatePicker @bind-Date="_dataInicio"
+                           Label="Data de início"
+                           Required="true"
+                           RequiredError="Informe a data de início."
+                           DateFormat="dd/MM/yyyy"
+                           Culture="Br" />
+        </MudItem>
+
+        <MudItem xs="12" sm="6">
+            <MudDatePicker @bind-Date="_dataFim"
+                           Label="Data de término"
+                           Required="true"
+                           RequiredError="Informe a data de término."
+                           DateFormat="dd/MM/yyyy"
+                           Culture="Br"
+                           Validation="@(new Func<DateTime?, string?>(ValidarDataFim))" />
+        </MudItem>
+
+        <MudItem xs="12" sm="6">
+            <MudNumericField T="decimal"
+                             @bind-Value="_meta"
+                             Label="Meta financeira"
+                             Required="true"
+                             RequiredError="Informe a meta."
+                             Adornment="Adornment.Start"
+                             AdornmentText="R$"
+                             Format="N2"
+                             Culture="Br"
+                             Validation="@(new Func<decimal, string?>(ValidarMeta))" />
+        </MudItem>
+
+        <MudItem xs="12" sm="6">
+            <MudSelect T="string"
+                       @bind-Value="_status"
+                       Label="Status"
+                       Required="true"
+                       RequiredError="Selecione o status.">
+                <MudSelectItem T="string" Value="@("Ativa")">Ativa</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Concluida")">Concluída</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Cancelada")">Cancelada</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" sm="6">
+            <MudSelect T="string"
+                       @bind-Value="_categoria"
+                       Label="Categoria"
+                       Required="true"
+                       RequiredError="Selecione a categoria.">
+                @foreach (var (value, label) in CampaignVisuals.Categorias)
+                {
+                    <MudSelectItem T="string" Value="@value">@label</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+    </MudGrid>
+
+    <div class="d-flex justify-end mt-6" style="gap:8px">
+        <MudButton Variant="Variant.Text" Color="Color.Default" Href="/gestor" Disabled="_enviando">
+            Cancelar
+        </MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Save"
+                   OnClick="SubmeterAsync"
+                   Disabled="_enviando">
+            @if (_enviando)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            @SubmitLabel
+        </MudButton>
+    </div>
+</MudForm>
+
+@code {
+    private static readonly CultureInfo Br = CultureInfo.GetCultureInfo("pt-BR");
+
+    [Parameter] public SalvarCampanha? Model { get; set; }
+    [Parameter] public string SubmitLabel { get; set; } = "Salvar";
+    [Parameter] public EventCallback<SalvarCampanha> OnSubmit { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+
+    private MudForm _form = default!;
+    private bool _enviando;
+
+    // Estado local editável (SalvarCampanha é um record imutável).
+    private string _titulo = string.Empty;
+    private string _descricao = string.Empty;
+    private DateTime? _dataInicio = DateTime.Today;
+    private DateTime? _dataFim = DateTime.Today.AddDays(30);
+    private decimal _meta;
+    private string _status = "Ativa";
+    private string _categoria = "Saude";
+
+    // Inicializa os campos apenas quando o Model (referência) muda, para não
+    // sobrescrever a digitação do usuário quando o pai atualizar o ErrorMessage.
+    private SalvarCampanha? _modelAplicado;
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(_modelAplicado, Model))
+        {
+            return;
+        }
+
+        _modelAplicado = Model;
+
+        if (Model is not null)
+        {
+            _titulo = Model.Titulo;
+            _descricao = Model.Descricao;
+            _dataInicio = Model.DataInicio.DateTime.Date;
+            _dataFim = Model.DataFim.DateTime.Date;
+            _meta = Model.MetaFinanceira;
+            _status = string.IsNullOrWhiteSpace(Model.Status) ? "Ativa" : Model.Status;
+            _categoria = string.IsNullOrWhiteSpace(Model.Categoria) ? "Saude" : Model.Categoria;
+        }
+    }
+
+    private static string? ValidarTitulo(string? valor)
+    {
+        if (string.IsNullOrWhiteSpace(valor))
+        {
+            return "Informe o título.";
+        }
+
+        return valor.Length > 160 ? "Máximo de 160 caracteres." : null;
+    }
+
+    private static string? ValidarDescricao(string? valor)
+    {
+        if (string.IsNullOrWhiteSpace(valor))
+        {
+            return "Informe a descrição.";
+        }
+
+        return valor.Length > 1000 ? "Máximo de 1000 caracteres." : null;
+    }
+
+    private static string? ValidarMeta(decimal valor) =>
+        valor > 0 ? null : "A meta deve ser maior que zero.";
+
+    private string? ValidarDataFim(DateTime? fim)
+    {
+        if (fim is null)
+        {
+            return "Informe a data de término.";
+        }
+
+        if (fim.Value.Date < DateTime.Today)
+        {
+            return "A data de término não pode ser no passado.";
+        }
+
+        if (_dataInicio is not null && fim.Value.Date < _dataInicio.Value.Date)
+        {
+            return "A data de término deve ser igual ou posterior à de início.";
+        }
+
+        return null;
+    }
+
+    private async Task SubmeterAsync()
+    {
+        await _form.Validate();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        var dto = new SalvarCampanha(
+            Titulo: _titulo.Trim(),
+            Descricao: _descricao.Trim(),
+            DataInicio: new DateTimeOffset(DateTime.SpecifyKind(_dataInicio!.Value, DateTimeKind.Unspecified), TimeSpan.Zero),
+            DataFim: new DateTimeOffset(DateTime.SpecifyKind(_dataFim!.Value, DateTimeKind.Unspecified), TimeSpan.Zero),
+            MetaFinanceira: _meta,
+            Status: _status,
+            Categoria: _categoria);
+
+        _enviando = true;
+        try
+        {
+            await OnSubmit.InvokeAsync(dto);
+        }
+        finally
+        {
+            _enviando = false;
+        }
+    }
+}

@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: campaigns-api
+  labels:
+    app: campaigns-api
+    app.kubernetes.io/component: api
+  annotations:
+    # Keel: auto-update quando o digest de :latest mudar no Docker Hub (ver infra/k8s/keel/).
+    keel.sh/policy: force
+    keel.sh/trigger: poll
+    keel.sh/pollSchedule: "@every 1m"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: campaigns-api
+  template:
+    metadata:
+      labels:
+        app: campaigns-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: campaigns-api
+          image: conexao-solidaria/campaigns-api:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: ASPNETCORE_URLS
+              value: http://+:8080
+            # B8: o schema e aplicado pelo Job campaigns-migrations ANTES do deploy.
+            # Aqui a app NAO migra no boot (evita corrida de MigrateAsync entre replicas),
+            # apenas aguarda o schema ja existir. No Compose/AppHost o default e true.
+            - name: Migrations__RunOnStartup
+              value: "false"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: postgres-password
+            - name: ConnectionStrings__CampaignsDb
+              value: Host=postgres;Port=5432;Database=campaignsdb;Username=postgres;Password=$(POSTGRES_PASSWORD)
+            - name: Jwt__Issuer
+              value: ConexaoSolidaria
+            - name: Jwt__Audience
+              value: ConexaoSolidaria
+            - name: Jwt__Secret
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: jwt-secret
+            - name: RabbitMq__HostName
+              value: rabbitmq
+            - name: RabbitMq__Port
+              value: "5672"
+            - name: RabbitMq__UserName
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: rabbitmq-user
+            - name: RabbitMq__Password
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: rabbitmq-password
+            - name: Elasticsearch__Url
+              value: http://elasticsearch:9200
+            - name: Elasticsearch__IndexName
+              value: campanhas
+          startupProbe:
+            httpGet:
+              path: /alive
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /alive
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: campaigns-api
+  labels:
+    app: campaigns-api
+spec:
+  type: ClusterIP
+  selector:
+    app: campaigns-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

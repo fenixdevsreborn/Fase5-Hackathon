@@ -1,0 +1,190 @@
+@page "/cadastrar"
+@layout AuthLayout
+@using System.ComponentModel.DataAnnotations
+@using ConexaoSolidaria.Contracts.Validation
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+<PageTitle>Cadastrar - Conexao Solidaria</PageTitle>
+
+<section class="cs-login-card" aria-labelledby="register-title">
+    <a class="cs-login-card__brand" href="/" aria-label="Voltar para a pagina inicial">
+        <img src="images/logo/logomarca-horizontal.png" alt="Conexao Solidaria" />
+    </a>
+
+    <header class="cs-login-card__header">
+        <h1 id="register-title">Criar Conta</h1>
+        <p>Cadastre-se como <span>Doador</span> para apoiar campanhas</p>
+    </header>
+
+        <MudForm @ref="_form">
+            <MudTextField T="string"
+                          @bind-Value="_nome"
+                          Label="Nome completo"
+                          Variant="Variant.Outlined"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Outlined.Badge"
+                          Required="true"
+                          RequiredError="Informe seu nome."
+                          Validation="@(new Func<string, string?>(ValidarNome))"
+                          Class="mb-3" />
+
+            <MudTextField T="string"
+                          @bind-Value="_email"
+                          Label="E-mail"
+                          Variant="Variant.Outlined"
+                          InputType="InputType.Email"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Outlined.Email"
+                          Required="true"
+                          RequiredError="Informe seu e-mail."
+                          Validation="@(new Func<string, string?>(ValidarEmail))"
+                          Class="mb-3" />
+
+            @* PatternMask: o usuario digita (ou cola) so os numeros ou o CPF completo com
+               pontuacao — a mascara 000.000.000-00 e aplicada automaticamente. Antes do envio
+               o valor e normalizado (apenas digitos) via CpfValidator.Normalize. *@
+            <MudTextField T="string"
+                          @bind-Value="_cpf"
+                          Label="CPF"
+                          Variant="Variant.Outlined"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Outlined.Fingerprint"
+                          Mask="@(new PatternMask("000.000.000-00"))"
+                          Placeholder="000.000.000-00"
+                          HelperText="Digite os 11 digitos; a pontuacao e preenchida sozinha."
+                          Required="true"
+                          RequiredError="Informe seu CPF."
+                          Validation="@(new Func<string, string?>(ValidarCpf))"
+                          Class="mb-3" />
+
+            <MudTextField T="string"
+                          @bind-Value="_senha"
+                          Label="Senha"
+                          Variant="Variant.Outlined"
+                          InputType="InputType.Password"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Outlined.Lock"
+                          HelperText="Minimo de 8 caracteres."
+                          Required="true"
+                          RequiredError="Informe uma senha."
+                          Validation="@(new Func<string, string?>(ValidarSenha))"
+                          Class="mb-3" />
+
+            <MudTextField T="string"
+                          @bind-Value="_confirmarSenha"
+                          Label="Confirmar senha"
+                          Variant="Variant.Outlined"
+                          InputType="InputType.Password"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Outlined.Lock"
+                          Required="true"
+                          RequiredError="Confirme sua senha."
+                          Validation="@(new Func<string, string?>(ValidarConfirmacao))"
+                          Class="mt-3 mb-1" />
+
+            @if (_erro)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Dense="true" Class="mt-3">
+                    Nao foi possivel cadastrar. Verifique os dados — o e-mail ou CPF pode ja estar em uso.
+                </MudAlert>
+            }
+
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       FullWidth="true"
+                       Class="cs-register-submit mt-4"
+                       Size="Size.Large"
+                       OnClick="CadastrarAsync"
+                       Disabled="_enviando">
+                @if (_enviando)
+                {
+                    <MudProgressCircular Class="mr-2" Size="Size.Small" Indeterminate="true" />
+                    <span>Cadastrando...</span>
+                }
+                else
+                {
+                    <span>Cadastrar</span>
+                }
+            </MudButton>
+        </MudForm>
+
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.body2" Align="Align.Center" Color="Color.Secondary">
+            Ja tem conta?
+            <MudLink Href="@EntrarHref">Entrar</MudLink>
+        </MudText>
+    
+    <p class="cs-login-card__security">
+        <MudIcon Icon="@Icons.Material.Outlined.Lock" Size="Size.Small" />
+        Seus dados estao protegidos e seguros conosco.
+    </p>
+</section>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    private MudForm _form = default!;
+    private string _nome = string.Empty;
+    private string _email = string.Empty;
+    private string _cpf = string.Empty;
+    private string _senha = string.Empty;
+    private string _confirmarSenha = string.Empty;
+    private bool _enviando;
+    private bool _erro;
+
+    private string EntrarHref =>
+        string.IsNullOrWhiteSpace(ReturnUrl) ? "/entrar" : $"/entrar?returnUrl={Uri.EscapeDataString(ReturnUrl)}";
+
+    private static string? ValidarNome(string nome) =>
+        !string.IsNullOrWhiteSpace(nome) && nome.Trim().Length >= 3 ? null : "Informe seu nome completo.";
+
+    private static string? ValidarEmail(string email) =>
+        new EmailAddressAttribute().IsValid(email) ? null : "E-mail invalido.";
+
+    // Aceita com ou sem mascara e valida os digitos verificadores de verdade
+    // (mesmo algoritmo do backend — reusa o CpfValidator dos Contracts).
+    private static string? ValidarCpf(string cpf) =>
+        CpfValidator.IsValid(cpf) ? null : "CPF invalido. Confira os 11 digitos.";
+
+    private static string? ValidarSenha(string senha) =>
+        (senha?.Length ?? 0) >= 8 ? null : "A senha deve ter ao menos 8 caracteres.";
+
+    private string? ValidarConfirmacao(string confirmacao) =>
+        confirmacao == _senha ? null : "As senhas nao conferem.";
+
+    private async Task CadastrarAsync()
+    {
+        _erro = false;
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        _enviando = true;
+        try
+        {
+            // Envia sempre normalizado (11 digitos): a API aceita ambos, mas manter o formato
+            // canonico preserva a unicidade do CPF entre cadastros com e sem mascara.
+            var dto = new CadastroDoador(_nome.Trim(), _email.Trim(), CpfValidator.Normalize(_cpf), _senha);
+            var result = await Auth.CadastrarDoadorAsync(dto);
+            if (result is null)
+            {
+                _erro = true;
+                return;
+            }
+
+            // Auto-login ja realizado pelo AuthService.
+            var destino = !string.IsNullOrWhiteSpace(ReturnUrl) && ReturnUrl.StartsWith('/')
+                ? ReturnUrl
+                : "/doador";
+            Nav.NavigateTo(destino, forceLoad: false);
+        }
+        finally
+        {
+            _enviando = false;
+        }
+    }
+}

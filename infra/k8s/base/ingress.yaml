@@ -1,0 +1,35 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: conexao-solidaria
+  labels:
+    app.kubernetes.io/part-of: conexao-solidaria
+  annotations:
+    # #K8S-005: unico ponto de entrada externo (nginx ingress controller).
+    # /api/* vai para o Gateway (YARP, que espera o path /api/* completo);
+    # todo o resto vai para o Web (Blazor). Sem rewrite-target: os paths passam intactos.
+    # Sticky sessions para os circuitos SignalR do Blazor Server (o Web precisa
+    # voltar sempre para o mesmo pod). Inofensivo para o Gateway (stateless).
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/affinity-mode: "persistent"
+    nginx.ingress.kubernetes.io/session-cookie-name: "conexao-web-affinity"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: conexao-solidaria.local
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 80

@@ -5,6 +5,17 @@
 
 # dotenv files
 .env
+.env.*
+# but keep the example template versioned
+!.env.example
+
+# Kubernetes secrets (real values must never be versioned)
+infra/k8s/secret.yaml
+# but keep the example template versioned
+!infra/k8s/secret.example.yaml
+
+# Data Protection keys (local dev fallback do Blazor Server; nunca versionar)
+keys/
 
 # User-specific files
 *.rsuser

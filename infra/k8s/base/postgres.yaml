@@ -1,0 +1,123 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+data:
+  # Script de init: cria os bancos e o usuario do Zabbix. A senha do Zabbix vem da
+  # variavel de ambiente ZABBIX_PASSWORD (secretKeyRef). NAO hardcode senhas aqui.
+  01-create-databases.sh: |
+    #!/bin/bash
+    set -e
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<-EOSQL
+        CREATE DATABASE identitydb;
+        CREATE DATABASE campaignsdb;
+        CREATE DATABASE zabbixdb;
+        CREATE USER zabbix WITH PASSWORD '${ZABBIX_PASSWORD}';
+        GRANT ALL PRIVILEGES ON DATABASE zabbixdb TO zabbix;
+    EOSQL
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname zabbixdb <<-EOSQL
+        GRANT ALL ON SCHEMA public TO zabbix;
+        ALTER SCHEMA public OWNER TO zabbix;
+    EOSQL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels:
+    app: postgres
+spec:
+  # ClusterIP #K8S-004: banco so e acessivel dentro do cluster.
+  # Tambem serve como governing service do StatefulSet.
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels:
+    app: postgres
+    app.kubernetes.io/component: database
+spec:
+  # Persistencia #K8S-003: StatefulSet + volumeClaimTemplates (PVC dedicado por replica).
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      # A imagem oficial do postgres precisa iniciar como root e fazer setuid para o
+      # usuario postgres (uid 999) apos ajustar permissoes do PGDATA; por isso NAO
+      # aplicamos runAsNonRoot aqui. fsGroup garante o PVC gravavel.
+      securityContext:
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: postgres-password
+            - name: POSTGRES_DB
+              value: postgres
+            - name: ZABBIX_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: zabbix-password
+            # Subdiretorio dedicado evita conflito com lost+found no volume montado.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: postgres-init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: postgres-init
+          configMap:
+            name: postgres-init
+            defaultMode: 0755
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi

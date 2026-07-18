@@ -1,0 +1,61 @@
+@using System.Globalization
+
+<div class="cs-campaign-progress">
+    <MudProgressLinear Color="BarColor" Rounded="true" Size="Size.Large"
+                       Min="0" Max="100" Value="@Percent"
+                       Class="my-1"
+                       aria-label="@($"{PercentLabel} da meta arrecadado")" />
+
+    @if (Dense)
+    {
+        <div class="d-flex justify-space-between align-center mt-1">
+            <MudText Typo="Typo.body2" Color="Color.Success" Style="font-weight:600;">
+                @Money(Arrecadado)
+            </MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                @PercentLabel de @Money(Meta)
+            </MudText>
+        </div>
+    }
+    else
+    {
+        <div class="d-flex justify-space-between flex-wrap mt-2" style="gap:12px;">
+            <div>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Arrecadado</MudText>
+                <MudText Typo="Typo.subtitle1" Color="Color.Success" Style="font-weight:700;">
+                    @Money(Arrecadado)
+                </MudText>
+            </div>
+            <div style="text-align:right;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Meta</MudText>
+                <MudText Typo="Typo.subtitle1" Style="font-weight:700;">@Money(Meta)</MudText>
+            </div>
+        </div>
+        <div class="d-flex justify-space-between align-center mt-1">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                @(Restante > 0 ? $"Faltam {Money(Restante)}" : "Meta atingida!")
+            </MudText>
+            <MudText Typo="Typo.body2" Style="font-weight:700;">@PercentLabel</MudText>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>Meta financeira da campanha (denominador).</summary>
+    [Parameter] public decimal Meta { get; set; }
+
+    /// <summary>Valor total ja arrecadado (numerador).</summary>
+    [Parameter] public decimal Arrecadado { get; set; }
+
+    /// <summary>Modo compacto (uma linha de rotulos), usado dentro dos cartoes.</summary>
+    [Parameter] public bool Dense { get; set; }
+
+    private static readonly CultureInfo Ptbr = CultureInfo.GetCultureInfo("pt-BR");
+
+    private double Percent => Meta <= 0m ? 0d : Math.Clamp((double)(Arrecadado / Meta) * 100d, 0d, 100d);
+    private string PercentLabel => $"{Percent.ToString("0.#", Ptbr)}%";
+    private decimal Restante => Math.Max(0m, Meta - Arrecadado);
+    private Color BarColor => Percent >= 100d ? Color.Success : Color.Secondary;
+
+    private static string Money(decimal value) => value.ToString("C2", Ptbr);
+}

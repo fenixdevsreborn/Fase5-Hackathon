@@ -4,16 +4,18 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: postgres
+      # Usada pelo script de init para criar o usuario do Zabbix (veja infra/postgres/init).
+      ZABBIX_PASSWORD: ${ZABBIX_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 5s
       timeout: 5s
       retries: 15
@@ -21,11 +23,16 @@ services:
   rabbitmq:
     image: rabbitmq:4-management
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    # Habilita rabbitmq_prometheus (:15692) alem do management, para que o
+    # Prometheus scrapeie rabbitmq_queue_messages_ready/unacked/consumers.
+    volumes:
+      - ./infra/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
     ports:
       - "5672:5672"
       - "15672:15672"
+      - "15692:15692"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 5s
@@ -38,11 +45,16 @@ services:
       dockerfile: src/ConexaoSolidaria.Identity.Api/Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__IdentityDb: Host=postgres;Port=5432;Database=identitydb;Username=postgres;Password=postgres
+      ConnectionStrings__IdentityDb: Host=postgres;Port=5432;Database=identitydb;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       Jwt__Issuer: ConexaoSolidaria
       Jwt__Audience: ConexaoSolidaria
-      Jwt__Secret: conexao-solidaria-local-dev-secret-with-64-characters
+      Jwt__Secret: ${JWT_SECRET}
       Jwt__ExpiresMinutes: "120"
+      Seed__Gestor__Senha: ${SEED_MANAGER_PASSWORD}
+      # Tracing distribuido: o OTel SDK do ServiceDefaults liga o exporter OTLP
+      # quando estas envs existem (traces/metricas/logs -> OTel Collector via gRPC).
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
     ports:
       - "5001:8080"
     depends_on:
@@ -55,19 +67,22 @@ services:
       dockerfile: src/ConexaoSolidaria.Campaigns.Api/Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__CampaignsDb: Host=postgres;Port=5432;Database=campaignsdb;Username=postgres;Password=postgres
+      ConnectionStrings__CampaignsDb: Host=postgres;Port=5432;Database=campaignsdb;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       Jwt__Issuer: ConexaoSolidaria
       Jwt__Audience: ConexaoSolidaria
-      Jwt__Secret: conexao-solidaria-local-dev-secret-with-64-characters
+      Jwt__Secret: ${JWT_SECRET}
       RabbitMq__HostName: rabbitmq
       RabbitMq__Port: "5672"
-      RabbitMq__UserName: guest
-      RabbitMq__Password: guest
+      RabbitMq__UserName: ${RABBITMQ_USER}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
       RabbitMq__ExchangeName: conexao-solidaria
       RabbitMq__QueueName: doacoes-recebidas
       RabbitMq__RoutingKey: doacao.recebida
       Elasticsearch__Url: http://elasticsearch:9200
       Elasticsearch__IndexName: campanhas
+      # Tracing distribuido: exporta OTLP (traces/metricas/logs) para o OTel Collector.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
     ports:
       - "5002:8080"
     depends_on:
@@ -84,14 +99,17 @@ services:
       dockerfile: src/ConexaoSolidaria.Donations.Worker/Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__CampaignsDb: Host=postgres;Port=5432;Database=campaignsdb;Username=postgres;Password=postgres
+      ConnectionStrings__CampaignsDb: Host=postgres;Port=5432;Database=campaignsdb;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       RabbitMq__HostName: rabbitmq
       RabbitMq__Port: "5672"
-      RabbitMq__UserName: guest
-      RabbitMq__Password: guest
+      RabbitMq__UserName: ${RABBITMQ_USER}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
       RabbitMq__ExchangeName: conexao-solidaria
       RabbitMq__QueueName: doacoes-recebidas
       RabbitMq__RoutingKey: doacao.recebida
+      # Tracing distribuido: exporta OTLP (traces/metricas/logs) para o OTel Collector.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
     ports:
       - "5003:8080"
     depends_on:
@@ -116,6 +134,35 @@ services:
       timeout: 5s
       retries: 20
 
+  # OpenTelemetry Collector: recebe OTLP (traces/metricas/logs) dos servicos .NET,
+  # exporta traces para o Tempo e expoe metricas para o Prometheus scrapear em :8889.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command:
+      - --config=/etc/otelcol-contrib/config.yaml
+    volumes:
+      - ./infra/otel/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC (recebe dos servicos)
+      - "4318:4318"   # OTLP HTTP (recebe dos servicos)
+      - "8889:8889"   # metricas expostas para o Prometheus (/metrics)
+      - "13133:13133" # health check do proprio collector
+    depends_on:
+      tempo:
+        condition: service_started
+
+  # Grafana Tempo: backend de tracing distribuido. Recebe os spans via OTLP do
+  # Collector (tempo:4317) e serve a API de consulta em :3200 (datasource do Grafana).
+  tempo:
+    image: grafana/tempo:latest
+    command:
+      - -config.file=/etc/tempo/tempo.yaml
+    volumes:
+      - ./infra/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "3200:3200"   # HTTP API de consulta (usada pelo datasource Tempo do Grafana)
+
   prometheus:
     image: prom/prometheus:v2.55.1
     command:
@@ -132,8 +179,8 @@ services:
   grafana:
     image: grafana/grafana:11.4.0
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
     ports:
       - "3000:3000"
     volumes:
@@ -142,6 +189,7 @@ services:
       - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
+      - tempo
 
   zabbix-server:
     image: zabbix/zabbix-server-pgsql:alpine-latest
@@ -149,7 +197,7 @@ services:
       DB_SERVER_HOST: postgres
       POSTGRES_DB: zabbixdb
       POSTGRES_USER: zabbix
-      POSTGRES_PASSWORD: zabbix
+      POSTGRES_PASSWORD: ${ZABBIX_PASSWORD}
     ports:
       - "10051:10051"
     depends_on:
@@ -163,7 +211,7 @@ services:
       DB_SERVER_HOST: postgres
       POSTGRES_DB: zabbixdb
       POSTGRES_USER: zabbix
-      POSTGRES_PASSWORD: zabbix
+      POSTGRES_PASSWORD: ${ZABBIX_PASSWORD}
       PHP_TZ: America/Sao_Paulo
     ports:
       - "8085:8080"
@@ -189,3 +237,9 @@ volumes:
       com.conexaosolidaria.project: conexao-solidaria
       com.conexaosolidaria.service: elasticsearch
       com.conexaosolidaria.description: Indice de busca das campanhas
+  tempo-data:
+    name: conexao-solidaria-tempo-data
+    labels:
+      com.conexaosolidaria.project: conexao-solidaria
+      com.conexaosolidaria.service: tempo
+      com.conexaosolidaria.description: Armazenamento local dos traces (Grafana Tempo)

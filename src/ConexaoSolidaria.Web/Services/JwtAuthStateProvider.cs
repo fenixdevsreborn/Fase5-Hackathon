@@ -1,0 +1,161 @@
+using System.Security.Claims;
+using System.Text.Json;
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
+
+namespace ConexaoSolidaria.Web.Services;
+
+/// <summary>
+/// AuthenticationStateProvider que persiste o JWT no ProtectedLocalStorage (lado servidor,
+/// criptografado) e reconstroi o ClaimsPrincipal parseando o payload do token
+/// (role, email, nameidentifier, name). Popula tambem o <see cref="TokenProvider"/>
+/// para que o <see cref="ApiClient"/> anexe o Bearer.
+/// </summary>
+public sealed class JwtAuthStateProvider(
+    ProtectedLocalStorage storage,
+    TokenProvider tokenProvider) : AuthenticationStateProvider
+{
+    internal const string TokenKey = "cs_access_token";
+
+    private static readonly AuthenticationState Anonymous =
+        new(new ClaimsPrincipal(new ClaimsIdentity()));
+
+    public override async Task<AuthenticationState> GetAuthenticationStateAsync()
+    {
+        try
+        {
+            var stored = await storage.GetAsync<string>(TokenKey);
+            var token = stored.Success ? stored.Value : null;
+
+            if (string.IsNullOrWhiteSpace(token) || !TryBuildPrincipal(token, out var principal))
+            {
+                tokenProvider.Token = null;
+                return Anonymous;
+            }
+
+            tokenProvider.Token = token;
+            return new AuthenticationState(principal);
+        }
+        catch (InvalidOperationException)
+        {
+            // ProtectedLocalStorage nao disponivel durante prerender (sem circuito JS).
+            return Anonymous;
+        }
+    }
+
+    /// <summary>Chamado pelo AuthService apos login/cadastro bem-sucedido.</summary>
+    public void NotifyUserAuthentication(string token)
+    {
+        if (!TryBuildPrincipal(token, out var principal))
+        {
+            NotifyUserLogout();
+            return;
+        }
+
+        tokenProvider.Token = token;
+        NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(principal)));
+    }
+
+    /// <summary>Chamado pelo AuthService no logout.</summary>
+    public void NotifyUserLogout()
+    {
+        tokenProvider.Token = null;
+        NotifyAuthenticationStateChanged(Task.FromResult(Anonymous));
+    }
+
+    private static bool TryBuildPrincipal(string token, out ClaimsPrincipal principal)
+    {
+        principal = new ClaimsPrincipal(new ClaimsIdentity());
+
+        var claims = ParseClaims(token);
+        if (claims is null)
+        {
+            return false;
+        }
+
+        // Rejeita token expirado.
+        var exp = claims.FirstOrDefault(c => c.Type == "exp")?.Value;
+        if (long.TryParse(exp, out var expSeconds))
+        {
+            var expiresAt = DateTimeOffset.FromUnixTimeSeconds(expSeconds);
+            if (expiresAt <= DateTimeOffset.UtcNow)
+            {
+                return false;
+            }
+        }
+
+        var identity = new ClaimsIdentity(claims, authenticationType: "jwt",
+            nameType: ClaimTypes.Name, roleType: ClaimTypes.Role);
+        principal = new ClaimsPrincipal(identity);
+        return true;
+    }
+
+    private static List<Claim>? ParseClaims(string jwt)
+    {
+        var parts = jwt.Split('.');
+        if (parts.Length < 2)
+        {
+            return null;
+        }
+
+        try
+        {
+            var payload = Base64UrlDecode(parts[1]);
+            var map = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(payload);
+            if (map is null)
+            {
+                return null;
+            }
+
+            var claims = new List<Claim>();
+            foreach (var (key, value) in map)
+            {
+                var type = MapClaimType(key);
+                if (value.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in value.EnumerateArray())
+                    {
+                        claims.Add(new Claim(type, item.ToString()));
+                    }
+                }
+                else
+                {
+                    claims.Add(new Claim(type, value.ToString()));
+                }
+            }
+
+            return claims;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+    }
+
+    // Normaliza as chaves curtas do JWT (e as URIs longas de ClaimTypes) para os
+    // ClaimTypes esperados, garantindo IsInRole / Identity.Name funcionando.
+    private static string MapClaimType(string key) => key switch
+    {
+        "role" or "roles" or ClaimTypes.Role => ClaimTypes.Role,
+        "email" or ClaimTypes.Email => ClaimTypes.Email,
+        "nameid" or "sub" or ClaimTypes.NameIdentifier => ClaimTypes.NameIdentifier,
+        "unique_name" or "name" or ClaimTypes.Name => ClaimTypes.Name,
+        _ => key,
+    };
+
+    private static byte[] Base64UrlDecode(string value)
+    {
+        var normalized = value.Replace('-', '+').Replace('_', '/');
+        switch (normalized.Length % 4)
+        {
+            case 2: normalized += "=="; break;
+            case 3: normalized += "="; break;
+        }
+
+        return Convert.FromBase64String(normalized);
+    }
+}

@@ -1,0 +1,148 @@
+@inherits LayoutComponentBase
+@using ConexaoSolidaria.Contracts.Events
+@implements IDisposable
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+@inject NotificationDispatcher Notifications
+@inject ISnackbar Snackbar
+
+<MudThemeProvider Theme="AppTheme.Theme" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<div class="cs-app-shell">
+    <header class="cs-site-header">
+        <div class="cs-site-header__inner">
+            <a class="cs-brand" href="/" aria-label="Conexao Solidaria - pagina inicial">
+                <img src="images/logo/logomarca-horizontal.png" alt="Conexao Solidaria" />
+            </a>
+
+            <div class="cs-site-header__desktop-nav">
+                <NavMenu OnNavigate="CloseMobileMenu" />
+            </div>
+
+            <div class="cs-site-header__actions">
+                <AuthorizeView>
+                    <Authorized>
+                        <a class="cs-account-link"
+                           href="@(context.User.IsInRole("GestorONG") ? "/gestor" : "/doador")">
+                            <MudIcon Icon="@Icons.Material.Filled.Dashboard" Size="Size.Small" />
+                            Painel
+                        </a>
+                        <button class="cs-login-button cs-login-button--subtle" type="button" @onclick="LogoutAsync">
+                            Sair
+                        </button>
+                    </Authorized>
+                    <NotAuthorized>
+                        <a class="cs-profile-button" href="/entrar" aria-label="Entrar na plataforma" title="Entrar">
+                            <MudIcon Icon="@Icons.Material.Outlined.Person" Size="Size.Small" />
+                        </a>
+                    </NotAuthorized>
+                </AuthorizeView>
+
+                <button class="cs-menu-button"
+                        type="button"
+                        aria-label="@(_mobileMenuOpen ? "Fechar menu" : "Abrir menu")"
+                        aria-expanded="@_mobileMenuOpen"
+                        @onclick="ToggleMobileMenu">
+                    <MudIcon Icon="@(_mobileMenuOpen ? Icons.Material.Filled.Close : Icons.Material.Filled.Menu)" />
+                </button>
+            </div>
+        </div>
+
+        @if (_mobileMenuOpen)
+        {
+            <div class="cs-mobile-panel">
+                <NavMenu Mobile="true" OnNavigate="CloseMobileMenu" />
+                <AuthorizeView>
+                    <Authorized>
+                        <div class="cs-mobile-panel__account">
+                            <span>Ola, @(context.User.Identity?.Name ?? "usuario")</span>
+                            <button type="button" @onclick="LogoutAsync">Sair</button>
+                        </div>
+                    </Authorized>
+                    <NotAuthorized>
+                        <div class="cs-mobile-panel__account">
+                            <a href="/cadastrar" @onclick="CloseMobileMenu">Criar uma conta</a>
+                            <a class="cs-login-button" href="/entrar" @onclick="CloseMobileMenu">Entrar</a>
+                        </div>
+                    </NotAuthorized>
+                </AuthorizeView>
+            </div>
+        }
+    </header>
+
+    <main class="cs-main-content">
+        <div class="cs-page-container">
+            @* @key muda a cada navegacao: recria a subarvore e reexecuta a animacao de entrada. *@
+            <div class="cs-page-transition" @key="_navKey">
+                @Body
+            </div>
+        </div>
+    </main>
+
+    <Footer />
+
+    <AssistantLauncher />
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    Ocorreu um erro inesperado.
+    <a href="." class="reload">Recarregar</a>
+    <span class="dismiss">x</span>
+</div>
+
+@code {
+    private bool _mobileMenuOpen;
+    private int _navKey;
+
+    private void ToggleMobileMenu() => _mobileMenuOpen = !_mobileMenuOpen;
+
+    private void CloseMobileMenu() => _mobileMenuOpen = false;
+
+    protected override void OnInitialized()
+    {
+        Notifications.Received += OnNotificacaoRecebida;
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    // Cada navegacao troca a @key da area de conteudo, disparando a transicao de tela.
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        _navKey++;
+        _mobileMenuOpen = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnNotificacaoRecebida(DoacaoProcessadaNotification n)
+    {
+        if (!n.MetaAtingida)
+        {
+            return;
+        }
+
+        _ = InvokeAsync(() =>
+            Snackbar.Add(
+                $"\U0001F389 A campanha '{n.CampanhaTitulo}' atingiu a meta!",
+                Severity.Success,
+                config =>
+                {
+                    config.VisibleStateDuration = 8000;
+                    config.SnackbarVariant = Variant.Filled;
+                }));
+    }
+
+    private async Task LogoutAsync()
+    {
+        _mobileMenuOpen = false;
+        await AuthService.LogoutAsync();
+        Navigation.NavigateTo("/");
+    }
+
+    public void Dispose()
+    {
+        Notifications.Received -= OnNotificacaoRecebida;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}

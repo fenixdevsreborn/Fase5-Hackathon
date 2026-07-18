@@ -1,29 +1,196 @@
 # Conexao Solidaria
 
-MVP para o desafio do hackathon da ONG Esperanca Solidaria. A solucao usa .NET 10, Swagger, JWT/RBAC, PostgreSQL, RabbitMQ, Elasticsearch, Docker Desktop, Kubernetes, Grafana, Prometheus e Zabbix.
+<!-- Badge do pipeline de CI. owner/repo deduzidos do git remote (github.com/fenixdevsreborn/Fase5-POC-Hackathon).
+     Ao dar fork/mover o repo, ajuste "fenixdevsreborn/Fase5-POC-Hackathon" para "<owner>/<repo>". -->
+[![CI](https://github.com/fenixdevsreborn/Fase5-POC-Hackathon/actions/workflows/ci.yml/badge.svg)](https://github.com/fenixdevsreborn/Fase5-POC-Hackathon/actions/workflows/ci.yml)
+
+Plataforma social para o desafio do hackathon da ONG Esperanca Solidaria: doacoes processadas de forma **assincrona**, rastreabilidade ponta a ponta e transparencia visual para doadores e gestores. O foco de arquitetura e nunca perder uma doacao (Outbox transacional + mensageria confiavel), processar cada evento **exatamente uma vez** (idempotencia) e dar visibilidade completa (logs, traces, metricas e alertas).
+
+Stack: .NET 10, .NET Aspire 13.2.0, Blazor Web App (MudBlazor), YARP, JWT/RBAC, PostgreSQL, RabbitMQ, Elasticsearch, Docker Desktop, Kubernetes (Kustomize), Grafana, Prometheus, Zabbix e OpenTelemetry.
+
+## Visao do produto
+
+- **Doador**: navega pelas campanhas publicas, cadastra-se, registra uma intencao de doacao (com valores rapidos), acompanha o processamento **em tempo real**, recebe comprovante e consulta o historico de "minhas doacoes".
+- **Gestor da ONG (`GestorONG`)**: cria/edita campanhas, gerencia o ciclo de vida (ativar/concluir/cancelar), e acompanha arrecadacao e metricas de negocio em um painel.
+- **Publico**: painel de transparencia com o total arrecadado por campanha ativa e detalhe publico de cada campanha, sem necessidade de login.
+
+Detalhamento por persona em [docs/funcionalidades.md](docs/funcionalidades.md) (ver secao [Funcionalidades](#funcionalidades)).
 
 ## Arquitetura
 
-- `Identity.Api`: cadastro de doadores, login e emissao de JWT.
-- `Campaigns.Api`: gestao de campanhas, busca fuzzy paginada, painel publico de transparencia e criacao de intencao de doacao.
-- `Donations.Worker`: consumidor RabbitMQ que processa doacoes e atualiza o valor arrecadado.
-- `PostgreSQL`: `identitydb`, `campaignsdb` e `zabbixdb`.
-- `RabbitMQ`: fila `doacoes-recebidas` com exchange `conexao-solidaria`.
-- `Elasticsearch`: indice `campanhas` para busca fuzzy por titulo e descricao.
-- `Grafana/Prometheus`: metricas HTTP e contadores de doacoes.
-- `Zabbix`: stack pronta para monitoramento complementar.
+Solucao com **9 projetos** de aplicacao/infra + **2 de teste** (`ConexaoSolidaria.slnx`).
+
+Aplicacao (`src/`):
+
+- `ConexaoSolidaria.AppHost`: orquestrador **.NET Aspire** — sobe todo o ambiente local (bancos, fila, busca e todos os servicos) com um unico comando e expoe o Aspire Dashboard (logs, traces, metricas, health).
+- `ConexaoSolidaria.ServiceDefaults`: configuracao compartilhada de infra — OpenTelemetry (traces/metricas via OTLP), health checks (`/health`, `/alive`), service discovery e resiliencia HTTP.
+- `ConexaoSolidaria.Gateway`: API Gateway **YARP** — ponto unico de entrada. Roteia `/api/auth/*` para a Identity e `/api/campanhas/*` + `/api/doacoes/*` para a Campaigns via service discovery; injeta `X-Correlation-Id`; aplica **rate limiting** (auth 10/min, donation 30/min, global 100/min); adiciona security headers + HSTS; expoe `/metrics`.
+- `ConexaoSolidaria.Web`: interface **Blazor Web App (Interactive Server)** com MudBlazor — experiencia publica, area do doador e painel do gestor. Fala apenas com o Gateway. Auth via JWT em `ProtectedLocalStorage` + `AuthenticationStateProvider` custom; Data Protection keys persistidas (multi-replica). Consome o fanout `conexao-solidaria.notifications` via `NotificationConsumer` (BackgroundService resiliente, fila anonima) e empurra as atualizacoes para a UI por `NotificationDispatcher` (tempo real sobre o circuito SignalR do Blazor Server).
+- `ConexaoSolidaria.Identity.Api`: cadastro de doadores, login e emissao de JWT (roles `GestorONG` e `Doador`); policies nomeadas `CampaignManagement` e `DonationCreation`; erros em ProblemDetails (422/409/401); **API versioning** (header `x-api-version`/query, default `1.0`). Referencia apenas `Contracts` (nao arrasta EF).
+- `ConexaoSolidaria.Campaigns.Api`: CRUD de campanhas + **acoes de ciclo de vida**, busca com **fallback** Elasticsearch -> Postgres (circuit breaker Polly), transparencia publica (output cache), detalhe publico de campanha, `stats` (read model), intencao de doacao (`202 Accepted`) com **padrao Outbox**, consulta de status da doacao, historico "minhas doacoes", suporte a **Idempotency-Key** e **API versioning**; erros em ProblemDetails (422/409/404). Dona do schema do `campaignsdb` (aplica migrations no start).
+- `ConexaoSolidaria.Donations.Worker`: consumidor RabbitMQ **idempotente** (dedup por `EventId` em `processed_messages`), com **retry escalonado (10s/60s) + DLQ** e **prefetch 10**; incrementa o valor arrecadado da campanha de forma **atomica** (`ExecuteUpdateAsync`), faz **upsert do read model `campaign_stats`** na mesma transacao e publica `DoacaoProcessadaNotification` no fanout de notificacoes (best-effort, so no sucesso).
+- `ConexaoSolidaria.Contracts`: **tipos puros, sem EF** — contratos de mensageria e eventos (`DoacaoRecebidaEvent`, `DoacaoProcessadaNotification`), roles/`JwtOptions`, Value Object `Cpf` + validacao, e helpers de RabbitMQ (`RabbitMqOptions`, connection factory builder). Referenciado por todos os servicos sem acoplar persistencia.
+- `ConexaoSolidaria.Shared`: **dominio + persistencia EF** — `Shared.Domain` (`Campaign` com transicoes Ativar/Concluir/Cancelar, `Donation` com estados Pendente/Processada/Rejeitada/Falha e transicao unica, `OutboxMessage`, `ProcessedMessage`, `DonationIdempotencyKey`, `CampaignStats`, `DomainRuleException`) e o **`CampaignsDbContext` unico** (`Shared.Persistence`, com EF Migrations) usado por Campaigns.Api e Worker.
+
+Infraestrutura:
+
+- **PostgreSQL**: `identitydb` (tabela `users`) e `campaignsdb` (tabelas `campaigns`, `donations`, `outbox_messages`, `processed_messages`, `donation_idempotency_keys`, `campaign_stats`). No compose/k8s ha ainda `zabbixdb`.
+- **RabbitMQ**: exchanges `conexao-solidaria` (direct), `conexao-solidaria.retry`, `conexao-solidaria.dlx` e `conexao-solidaria.notifications` (fanout); filas `doacoes-recebidas`, `doacoes.retry.10s`, `doacoes.retry.60s`, `doacoes.dead-letter`.
+- **Elasticsearch**: indice `campanhas` com **analisador pt-BR** (ignora acento, stemming, stopwords) e busca **fuzzy multi-campo** em titulo/descricao/categoria — tolera erro de digitacao e autocompleta por prefixo. O indice e criado no startup da API e populado com **backfill** do Postgres; com o ES indisponivel, a busca cai para o Postgres (ver `AD-35`/`AD-12`).
+- **Grafana / Prometheus / Tempo / Zabbix / OpenTelemetry Collector**: observabilidade (ver secao dedicada).
+
+### Fluxo assincrono da doacao
+
+```mermaid
+flowchart LR
+    U["Usuario"] --> Web["Web (Blazor)"]
+    Web --> GW["Gateway (YARP)"]
+    GW --> API["Campaigns.Api"]
+    API -->|"grava Donation + OutboxMessage (mesma transacao)"| DB[("campaignsdb")]
+    API -->|"202 Accepted"| Web
+    DB -.->|"dispatcher le pendentes"| MQ["RabbitMQ (doacoes-recebidas)"]
+    MQ --> W["Donations.Worker"]
+    W -->|"dedup por EventId + incremento atomico"| DB
+    W -->|"upsert read model"| RM[("campaign_stats")]
+    W -.->|"DoacaoProcessadaNotification"| NX["fanout conexao-solidaria.notifications"]
+    NX --> NC["NotificationConsumer (Web)"]
+    NC -->|"tempo real (SignalR)"| Web
+    Web -->|"polling GET /api/doacoes/{id}"| GW
+    GW --> API
+```
+
+A intencao de doacao retorna `202 Accepted` imediatamente, mas a UI **nao** declara "Concluida" nesse ponto. A confirmacao chega por dois caminhos complementares: (1) **tempo real** — ao processar, o Worker publica `DoacaoProcessadaNotification` no fanout `conexao-solidaria.notifications`, o `NotificationConsumer` da Web recebe e empurra a atualizacao para o circuito SignalR do usuario; (2) **polling** de fallback em `GET /api/doacoes/{id}`, que confirma quando o status vira `Processada`. Isso garante rastreabilidade real do processamento assincrono.
+
+## Funcionalidades
+
+Resumo por persona (detalhes em [docs/funcionalidades.md](docs/funcionalidades.md)):
+
+- **Doador**: doacao com **valores rapidos** (atalhos de montante) e validacao; **acompanhamento em tempo real** do processamento (SignalR) com fallback por polling; **comprovante** da doacao processada; **minhas doacoes** (historico do doador em `GET /api/doacoes/minhas`).
+- **Gestor da ONG**: **CRUD** de campanhas e **acoes de ciclo de vida** (ativar/concluir/cancelar, com regras de transicao no dominio); **dashboard** com arrecadacao e metricas de negocio.
+- **Publico**: lista de campanhas, **detalhe publico** de campanha (`GET /api/campanhas/{id}`) e **transparencia** (total arrecadado por campanha ativa, alimentado pelo read model), sem login.
+
+## API
+
+Endpoints expostos via Gateway. Versionamento por header `x-api-version` (ou query), default `1.0`; rotas atuais inalteradas. Erros em ProblemDetails (422 validacao/regra de dominio, 409 conflito, 404, 401/403, 429 rate limit).
+
+| Metodo e rota | Acesso | Descricao |
+| --- | --- | --- |
+| `POST /api/auth/login` | anon | login, retorna JWT |
+| `POST /api/auth/cadastro-doador` | anon | cadastro de doador (`201`) |
+| `GET /api/auth/me` | autenticado | dados do usuario logado |
+| `GET /api/campanhas/search` | anon | busca (Elasticsearch -> Postgres) |
+| `GET /api/campanhas/{id}` | anon | detalhe publico da campanha |
+| `GET /api/campanhas/transparencia` | anon | campanhas ativas (output cache 5s) |
+| `GET /api/campanhas/stats` | anon | metricas do read model `campaign_stats` |
+| `POST /api/campanhas` | Gestor | cria campanha (`201`) |
+| `PUT /api/campanhas/{id}` | Gestor | edita campanha |
+| `POST /api/campanhas/{id}/ativar\|concluir\|cancelar` | Gestor | acoes de ciclo de vida |
+| `POST /api/doacoes` | Doador | intencao de doacao (`202`, aceita `Idempotency-Key`) |
+| `GET /api/doacoes/{id}` | Doador | status enriquecido da doacao |
+| `GET /api/doacoes/minhas` | Doador | historico do doador |
 
 ## Pre-requisitos
 
-- Docker Desktop com Docker Compose.
-- SDK .NET 10 para desenvolvimento local.
-- `kubectl`, se for usar o Kubernetes do Docker Desktop.
+- SDK **.NET 10** (o AppHost usa o SDK do Aspire, restaurado via NuGet).
+- **Docker Desktop** (o AppHost e o Docker Compose provisionam os containers de infra).
+- `kubectl` (e, opcionalmente, o Kubernetes do Docker Desktop) para o deploy em cluster.
 
-## Executar com Docker Compose
+## Subir com AppHost (recomendado)
+
+Experiencia principal de desenvolvimento — sobe **tudo** (Postgres, RabbitMQ, Elasticsearch, as 3 APIs, o Worker, o Gateway e a interface Blazor) com um comando:
 
 ```powershell
+dotnet run --project src/ConexaoSolidaria.AppHost
+```
+
+O console imprime a URL do **Aspire Dashboard** (ex.: `https://localhost:17276`), onde ficam recursos, logs, traces, metricas, health e os links/portas de cada servico (portas atribuidas dinamicamente). Abra o recurso `web` para a interface e `gateway` para a API unificada.
+
+Segredos locais: o AppHost gera automaticamente as senhas de Postgres/RabbitMQ e usa defaults de desenvolvimento para `jwt-secret` e `seed-manager-password` (em `src/ConexaoSolidaria.AppHost/appsettings.Development.json`). Para uso real, sobrescreva via user-secrets:
+
+```powershell
+dotnet user-secrets set "Parameters:jwt-secret" "<segredo-com-ao-menos-64-caracteres>" --project src/ConexaoSolidaria.AppHost
+dotnet user-secrets set "Parameters:seed-manager-password" "<senha-forte-do-gestor-seed>" --project src/ConexaoSolidaria.AppHost
+```
+
+## Kubernetes com Kustomize
+
+Os manifestos foram reestruturados em **Kustomize** (`infra/k8s/base/` + `infra/k8s/overlays/local/`), com hardening de producao: StatefulSet + PVC (postgres, rabbitmq), PVC dedicado (elasticsearch), Services `ClusterIP`, **Ingress nginx** como entrada unica (`/api` -> gateway, `/` -> web), probes (startup `/alive`, readiness `/health`, liveness `/alive`), requests/limits, `securityContext` (non-root `runAsUser 10001`, `readOnlyRootFilesystem`, drop ALL), **NetworkPolicies** (default-deny + allow-list, incluindo `web -> rabbitmq` e `migrations -> postgres`), **Jobs de migracao** (`RunMigrationsOnly=true`; deployments com `Migrations__RunOnStartup=false`), **HPA** (gateway, identity-api, campaigns-api por CPU) e PDB.
+
+> **Deploy validado ao vivo** (Docker Desktop k8s v1.36.1): build das 5 imagens -> carga no node -> Secret -> `kubectl apply -k`. Resultado: 12 pods `Running 1/1`, Jobs de migracao `Complete`, E2E de doacao processada em ~3s, read model populado e consumer de notificacoes conectado. Achado operacional: a NetworkPolicy precisa liberar os Jobs de migracao (`app=*-migrations`) para o Postgres; sem isso o schema nao nasce.
+
+> O caminho mais simples é `pwsh infra/k8s/up.ps1` (um comando: Secret a partir do `.env`, Keel e `kubectl apply -k`). As imagens vêm do Docker Hub — veja **[Publicar no Docker Hub + auto-update](#publicar-no-docker-hub--auto-update-keel)** logo abaixo. Passo a passo manual equivalente:
+
+```powershell
+kubectl config use-context docker-desktop
+
+# 1) Publicar as 5 imagens no Docker Hub (junonn5/conexao-solidaria-<svc>:latest)
+$env:DOCKERHUB_TOKEN = "<seu_PAT_do_docker_hub>"
+pwsh infra/k8s/push-dockerhub.ps1
+
+# 2) Secret (fora do Git). Preencha os placeholders antes de aplicar.
+Copy-Item infra/k8s/secret.example.yaml infra/k8s/secret.yaml
+# edite infra/k8s/secret.yaml preenchendo os placeholders <...>
+kubectl apply -f infra/k8s/secret.yaml
+
+# 3) Keel (auto-update das imagens) + deploy (Kustomize)
+kubectl apply -f infra/k8s/keel/keel.yaml
+kubectl apply -k infra/k8s/overlays/local
+
+# 4) (Opcional) smoke test automatizado
+pwsh infra/k8s/smoke.ps1
+
+kubectl get pods -n conexao-solidaria
+kubectl get svc  -n conexao-solidaria
+```
+
+A entrada externa e o Ingress nginx no host `conexao-solidaria.local` (mapeie no `hosts` se necessario).
+
+> O `up.ps1` **ja sobe os principais port-forwards em segundo plano** ao final do deploy (web `18088`, gateway `18080`, identity `18081`, campaigns `18082`, grafana `3000`, prometheus `9090`, rabbitmq `15672`) — eles continuam ativos apos o script e sao encerrados pelo `down.ps1`. Use `up.ps1 -NoForward` para desativar. Para servicos nao cobertos (ou fluxo manual), use `port-forward` direto:
+
+```powershell
+kubectl port-forward -n conexao-solidaria svc/grafana  3000:3000
+kubectl port-forward -n conexao-solidaria svc/rabbitmq 15672:15672
+kubectl port-forward -n conexao-solidaria svc/zabbix-web 8085:8080
+```
+
+> Renderizar o YAML final sem aplicar: `kubectl kustomize infra/k8s/overlays/local`. Detalhes completos em [infra/k8s/README.md](infra/k8s/README.md).
+
+### Publicar no Docker Hub + auto-update (Keel)
+
+O overlay local aponta para as imagens publicadas no Docker Hub (`junonn5/conexao-solidaria-<svc>:latest`), então o node as baixa direto do registry — não é mais preciso o `ctr import` manual. O **Keel** (instalado por `up.ps1` em `infra/k8s/keel/keel.yaml`) observa essas tags e, quando um novo push muda o digest de `:latest`, recria os pods sozinho (~1 min, `keel.sh/pollSchedule`).
+
+Fluxo:
+
+```powershell
+# 1) Publicar as 5 imagens no Docker Hub (token via env — NUNCA versionado)
+$env:DOCKERHUB_TOKEN = "<seu_PAT_do_docker_hub>"
+pwsh infra/k8s/push-dockerhub.ps1
+
+# 2) Subir a stack (puxa as imagens do Docker Hub e instala o Keel)
+pwsh infra/k8s/up.ps1
+#   ou, publicando e subindo de uma vez:
+pwsh infra/k8s/up.ps1 -Publish
+
+# 3) A partir daqui, para "soltar uma imagem nova" basta republicar:
+pwsh infra/k8s/push-dockerhub.ps1   # o Keel detecta e atualiza os pods rodando
+
+# Acompanhar o auto-update
+kubectl get pods -n conexao-solidaria -w
+kubectl logs -n keel deploy/keel -f
+```
+
+> O `docker login` usa `--password-stdin` lendo `$env:DOCKERHUB_TOKEN`; o token não é gravado em disco. Os repositórios são públicos, então o Keel puxa sem credenciais. Para outro usuário/registry, use `-User` em `push-dockerhub.ps1` e ajuste o bloco `images:` do overlay.
+
+## Docker Compose (alternativa)
+
+Caminho alternativo ao AppHost, util para reproduzir o ambiente completo com Grafana/Prometheus/Zabbix em portas fixas:
+
+```powershell
+Copy-Item .env.example .env   # preencha os segredos antes de subir
 docker compose up --build
 ```
+
+> O schema dos bancos e criado por **EF Core Migrations** (`MigrateAsync` no start da Campaigns.Api e da Identity.Api), **nao** por `EnsureCreated`. Ao migrar de uma stack antiga (criada com `EnsureCreated`), recrie os volumes com `docker compose down -v` antes de subir, para que as migrations criem o schema do zero em banco limpo.
 
 Servicos:
 
@@ -31,111 +198,114 @@ Servicos:
 - Campaigns Swagger: http://localhost:5002/swagger
 - Worker health: http://localhost:5003/health
 - Elasticsearch: http://localhost:9200
-- RabbitMQ: http://localhost:15672 (`guest` / `guest`)
+- RabbitMQ: http://localhost:15672 (`RABBITMQ_USER` / `RABBITMQ_PASSWORD` no `.env`)
 - Prometheus: http://localhost:9090
-- Grafana: http://localhost:3000 (`admin` / `admin`)
+- Grafana: http://localhost:3000 (`GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` no `.env`)
 - Zabbix: http://localhost:8085
 
 Usuario gestor criado no seed:
 
 - Email: `gestor@conexaosolidaria.local`
-- Senha: `Gestor@123456`
 - Role: `GestorONG`
+- Senha: via variavel de ambiente `Seed__Gestor__Senha` (mapeada de `SEED_MANAGER_PASSWORD` no `.env`, documentada no `.env.example`). Nunca commite a senha real.
 
-## Fluxo principal de demo
+## Interface web (Blazor)
 
-1. Abrir o Swagger da Identity API e fazer login do gestor.
-2. Copiar o `accessToken`.
-3. Abrir o Swagger da Campaigns API e clicar em `Authorize`.
-4. Criar campanha em `POST /api/campanhas`.
-5. Buscar a campanha em `GET /api/campanhas/search?q=Natal&page=1&pageSize=10`.
-6. Criar doador em `POST /api/auth/cadastro-doador`.
-7. Usar o token do doador para chamar `POST /api/doacoes`.
-8. Abrir RabbitMQ e observar a fila `doacoes-recebidas`.
-9. Consultar `GET /api/campanhas/transparencia` e confirmar o valor arrecadado.
-10. Abrir o dashboard do Grafana e verificar requisicoes HTTP/doacoes processadas.
+Rotas da aplicacao `ConexaoSolidaria.Web` (abra pelo recurso `web` no Aspire Dashboard ou pelo Ingress):
 
-## Busca de campanhas
+- Publico: `/` (landing), `/campanhas`, `/campanhas/{id}`, `/transparencia`
+- Conta: `/entrar`, `/cadastrar`
+- Doador: `/doador`, `/doador/doacoes` (minhas doacoes), `/doador/doacoes/{id}` (acompanhamento em tempo real da doacao)
+- Gestor: `/gestor` (dashboard + graficos), `/gestor/campanhas/nova`, `/gestor/campanhas/{id}/editar`
+- Diagnostico: `/status`
 
-Campanhas criadas ou atualizadas pela `Campaigns.Api` sao indexadas no Elasticsearch.
+## Observabilidade
 
-```http
-GET /api/campanhas/search?q=alimento&page=1&pageSize=10
-```
+Telemetria end-to-end com correlacao por `X-Correlation-Id` e propagacao de `traceparent` ate o Worker.
 
-A busca usa fuzzy matching nos campos `titulo` e `descricao`. `pageSize` aceita valores entre 1 e 100.
+- **OpenTelemetry**: instrumentacao via `ServiceDefaults`, exportando traces/metricas por OTLP. Local: Aspire Dashboard. Compose/k8s: **OTel Collector** (`infra/otel/`) roteia os traces para o **Tempo** (`infra/tempo/`, datasource no Grafana) e as metricas para o Prometheus.
+- **Tracing distribuido**: traces correlacionados app -> OTel Collector -> Tempo, exploraveis na aba Explore do Grafana (datasource `Tempo`), com `traceparent` propagado ate o Worker.
+- **Prometheus + prometheus-net**: endpoint `/metrics` em todos os servicos (incluindo o Gateway); Prometheus faz scrape. Metricas custom de negocio/mensageria: `conexao_donations_processed_total`, `conexao_donations_rejected_total`, `conexao_donation_publish_total`, `conexao_donation_publish_failures_total`, `conexao_outbox_pending_messages`, `conexao_donation_processing_duration_seconds`, `conexao_dead_letter_messages`.
+- **Grafana**: dashboards provisionados em `infra/grafana/dashboards/` (`negocio.json`, `aplicacao.json`, `mensageria.json`) e alertas em `infra/grafana/provisioning/alerting/` (DLQ > 0, Outbox > 20 por 2 min, 5xx).
+- **Zabbix**: template real em `infra/zabbix/templates/` (itens HTTP + 9 triggers) para monitoramento complementar.
+- **Runbook e cenario de falha**: [docs/runbook.md](docs/runbook.md) e [docs/cenario-falha-recuperacao.md](docs/cenario-falha-recuperacao.md) descrevem operacao, alertas e o roteiro de falha/recuperacao (ex.: derrubar o RabbitMQ, ver o Outbox acumular e recuperar sem perda).
 
-Exemplo de resposta:
-
-```json
-{
-  "items": [],
-  "page": 1,
-  "pageSize": 10,
-  "total": 0,
-  "totalPages": 0
-}
-```
-
-Configuracao:
-
-```json
-"Elasticsearch": {
-  "Url": "http://localhost:9200",
-  "IndexName": "campanhas"
-}
-```
-
-## Executar testes
+## Testes
 
 ```powershell
 dotnet test ConexaoSolidaria.slnx
 ```
 
-## Kubernetes no Docker Desktop
+- `tests/ConexaoSolidaria.Tests`: **23 testes unitarios** (regras de dominio + persistencia EF com SQLite in-memory).
+- `tests/ConexaoSolidaria.IntegrationTests`: **12 testes de integracao** com **Testcontainers** (Postgres + RabbitMQ reais): identity, campaigns, outbox, fluxo assincrono completo, idempotencia por `EventId` e por `Idempotency-Key`, e populacao do read model `campaign_stats`.
 
-Ative o Kubernetes nas configuracoes do Docker Desktop e use:
+## Padroes e decisoes
 
-```powershell
-kubectl config use-context docker-desktop
+Resumo (detalhes e trade-offs em [docs/decisoes-arquiteturais.md](docs/decisoes-arquiteturais.md)):
 
-docker build -f src/ConexaoSolidaria.Identity.Api/Dockerfile -t conexao-solidaria/identity-api:local .
-docker build -f src/ConexaoSolidaria.Campaigns.Api/Dockerfile -t conexao-solidaria/campaigns-api:local .
-docker build -f src/ConexaoSolidaria.Donations.Worker/Dockerfile -t conexao-solidaria/donations-worker:local .
+- **Outbox transacional**: a doacao e o evento sao gravados na mesma transacao; um dispatcher publica com publisher confirms. Garante que nenhuma doacao aceita se perca, mesmo com o broker fora do ar.
+- **Idempotencia**: entrada protegida por **Idempotency-Key** (evita doacao duplicada na API) e consumo protegido por dedup de **`EventId`** em `processed_messages` (evita processamento duplicado no Worker).
+- **DLQ + retry escalonado**: falhas vao para filas de retry (10s/60s) e, esgotadas as tentativas, para a dead-letter — sem travar o consumo.
+- **Incremento atomico**: o Worker soma no `ValorTotalArrecadado` via `ExecuteUpdateAsync` (UPDATE no banco), evitando race conditions.
+- **ProblemDetails**: erros padronizados (422/409/404/401) nas APIs.
+- **RBAC com policies nomeadas**: roles `GestorONG`/`Doador` + policies `CampaignManagement`/`DonationCreation`.
+- **Rate limiting** no Gateway (auth 10/min, donation 30/min, global 100/min).
+- **CQRS leve**: read model `campaign_stats` (upsert pelo Worker) serve leituras de transparencia/stats sem tocar o modelo de escrita.
+- **Notificacao em tempo real**: fanout `conexao-solidaria.notifications` -> `NotificationConsumer` da Web -> push SignalR, com polling como fallback.
+- **EF Migrations** (`MigrateAsync`) como fonte do schema; Campaigns.Api e dona do `campaignsdb` e o Worker aguarda a migracao.
+- **API versioning** por header `x-api-version` (default `1.0`) nas APIs.
+- **Value Object `Cpf`** com validacao e mascara.
 
-kubectl apply -f infra/k8s/conexao-solidaria.yaml
-kubectl get pods -n conexao-solidaria
-kubectl get svc -n conexao-solidaria
-```
+Detalhes e trade-offs em [docs/decisoes-arquiteturais.md](docs/decisoes-arquiteturais.md) (AD-01..AD-24) e catalogo de funcionalidades em [docs/funcionalidades.md](docs/funcionalidades.md).
 
-URLs no Kubernetes local:
+## Matriz de rastreabilidade
 
-- Identity Swagger: http://localhost:30081/swagger
-- Campaigns Swagger: http://localhost:30082/swagger
-- Elasticsearch: http://localhost:30920
-- RabbitMQ: http://localhost:31672
-- Prometheus: http://localhost:30090
-- Grafana: http://localhost:30300
-- Zabbix: http://localhost:30085
+| Requisito do desafio | Onde esta implementado |
+| --- | --- |
+| Microsservicos / separacao de dominios | `Identity.Api`, `Campaigns.Api`, `Donations.Worker`, `Gateway` |
+| Processamento **assincrono** de doacoes | Outbox (Campaigns.Api) + RabbitMQ + `Donations.Worker` |
+| Confiabilidade da mensageria (nao perder doacao) | Outbox transacional + publisher confirms + retry/DLQ |
+| Idempotencia / exactly-once | `Idempotency-Key` + dedup por `EventId` (`processed_messages`) |
+| Autenticacao e RBAC | JWT na `Identity.Api`; policies no Gateway/APIs |
+| API Gateway / ponto unico | `Gateway` (YARP) + Ingress nginx |
+| Busca de campanhas | Elasticsearch (`indice campanhas`, analisador pt-BR + fuzzy multi-campo) com fallback Postgres |
+| Transparencia publica | `GET /api/campanhas/transparencia` + `stats` (read model) + pagina `/transparencia` |
+| Notificacao em tempo real | fanout `conexao-solidaria.notifications` + `NotificationConsumer` (SignalR) |
+| Interface web (doador + gestor) | `ConexaoSolidaria.Web` (Blazor + MudBlazor) |
+| Observabilidade (logs/traces/metricas/alertas) | OTel + OTel Collector + Tempo + Prometheus + Grafana + Zabbix |
+| Orquestracao local | `AppHost` (.NET Aspire) |
+| Deploy em Kubernetes | Kustomize `infra/k8s/` (base + overlay local); deploy validado ao vivo |
+| Testes automatizados | `tests/` (23 unit + 12 integracao Testcontainers) |
+| Seguranca de segredos | `.env.example`, `SECURITY.md`, Secret via example no k8s |
 
-## Documentacao
+## Seguranca
 
-- Diagrama: [docs/arquitetura.md](docs/arquitetura.md)
-- Justificativa dos bancos: [docs/justificativa-bancos.md](docs/justificativa-bancos.md)
-- Template do relatorio final: [docs/relatorio-entrega-template.md](docs/relatorio-entrega-template.md)
-- Guia Kubernetes: [ReadmeKubernetes.md](ReadmeKubernetes.md)
+Sem segredos versionados: `.env.example`, Secret do k8s gerado a partir de `infra/k8s/secret.example.yaml`, senha do gestor seed via env `Seed__Gestor__Senha` e mascara de CPF. Politica completa em [SECURITY.md](SECURITY.md). Nunca commite tokens, senhas ou qualquer segredo real.
+
+Os tokens JWT sao obtidos em tempo de execucao fazendo login (`POST /api/auth/login` para o gestor, `POST /api/auth/cadastro-doador` para um doador) e copiando o `accessToken` da resposta.
 
 ## CI/CD
 
-O workflow em `.github/workflows/ci.yml` executa a cada push/pull request para `main` ou `master`:
+O workflow multi-job em `.github/workflows/ci.yml` executa a cada push/pull request para `main`/`master`:
 
-- `dotnet restore`
-- `dotnet build`
-- `dotnet test`
-- Docker build das tres imagens
+- **quality**: restore + cache NuGet, `dotnet format`/scan de vulnerabilidades (report-only), `dotnet build` (Release).
+- **tests**: unit + integracao (Testcontainers), cobertura XPlat publicada como artifact.
+- **containers**: build das **5 imagens** (matrix, Buildx + cache) — Identity.Api, Campaigns.Api, Donations.Worker, Gateway e Web.
+- **kubernetes-validation**: `kustomize build` + `kubeconform`.
+- **publish** (so `main`): push das 5 imagens no GHCR.
 
-Gestor:
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjZmJlOWE0OS0xN2Y0LTRhNTItYWQ3NS03MGM0YjA4ZjBjMmQiLCJlbWFpbCI6Imdlc3RvckBjb25leGFvc29saWRhcmlhLmxvY2FsIiwiaHR0cDovL3NjaGVtYXMueG1sc29hcC5vcmcvd3MvMjAwNS8wNS9pZGVudGl0eS9jbGFpbXMvbmFtZWlkZW50aWZpZXIiOiJjZmJlOWE0OS0xN2Y0LTRhNTItYWQ3NS03MGM0YjA4ZjBjMmQiLCJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1lIjoiR2VzdG9yIE9ORyIsImh0dHA6Ly9zY2hlbWFzLnhtbHNvYXAub3JnL3dzLzIwMDUvMDUvaWRlbnRpdHkvY2xhaW1zL2VtYWlsYWRkcmVzcyI6Imdlc3RvckBjb25leGFvc29saWRhcmlhLmxvY2FsIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiR2VzdG9yT05HIiwiZXhwIjoxNzgwMDE5MzY0LCJpc3MiOiJDb25leGFvU29saWRhcmlhIiwiYXVkIjoiQ29uZXhhb1NvbGlkYXJpYSJ9.E5hmn9SVtb0hr4gycFH2TpdKaxSqNrO73F-G_rgrkGQ
+Complementos: **Dependabot** (nuget/actions/docker), PR template Spec-Driven e badge do pipeline no topo deste README.
 
-Doador:
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3NTk1ZmZlNi05NzMzLTQ0MzktYTEzNi1jZjFhNWQ3NGJkNjMiLCJlbWFpbCI6ImZhcmlhc0BmYXJpYXMuY29tIiwiaHR0cDovL3NjaGVtYXMueG1sc29hcC5vcmcvd3MvMjAwNS8wNS9pZGVudGl0eS9jbGFpbXMvbmFtZWlkZW50aWZpZXIiOiI3NTk1ZmZlNi05NzMzLTQ0MzktYTEzNi1jZjFhNWQ3NGJkNjMiLCJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1lIjoiTHVjYXMgRmFyaWFzIiwiaHR0cDovL3NjaGVtYXMueG1sc29hcC5vcmcvd3MvMjAwNS8wNS9pZGVudGl0eS9jbGFpbXMvZW1haWxhZGRyZXNzIjoiZmFyaWFzQGZhcmlhcy5jb20iLCJodHRwOi8vc2NoZW1hcy5taWNyb3NvZnQuY29tL3dzLzIwMDgvMDYvaWRlbnRpdHkvY2xhaW1zL3JvbGUiOiJEb2Fkb3IiLCJleHAiOjE3ODAwMTkyMTUsImlzcyI6IkNvbmV4YW9Tb2xpZGFyaWEiLCJhdWQiOiJDb25leGFvU29saWRhcmlhIn0.Tl4vDRVP6Hcq9HaLK9vVx9IW6xU_PCbtSFOerAYItco
+## Documentacao
+
+- Arquitetura e modelo de dados: [docs/arquitetura.md](docs/arquitetura.md)
+- Observabilidade (metricas, dashboards, alertas): [docs/observabilidade.md](docs/observabilidade.md)
+- Funcionalidades por persona: [docs/funcionalidades.md](docs/funcionalidades.md)
+- Decisoes arquiteturais: [docs/decisoes-arquiteturais.md](docs/decisoes-arquiteturais.md)
+- Runbook operacional: [docs/runbook.md](docs/runbook.md)
+- Cenario de falha e recuperacao: [docs/cenario-falha-recuperacao.md](docs/cenario-falha-recuperacao.md)
+- Justificativa dos bancos: [docs/justificativa-bancos.md](docs/justificativa-bancos.md)
+- Guia Kubernetes: [infra/k8s/README.md](infra/k8s/README.md)
+- Politica de seguranca: [SECURITY.md](SECURITY.md)
+</content>
+</invoke>

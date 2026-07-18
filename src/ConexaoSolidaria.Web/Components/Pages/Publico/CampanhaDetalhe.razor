@@ -1,0 +1,258 @@
+@page "/campanhas/{Id}"
+@using System.Globalization
+@using ConexaoSolidaria.Web.Components.Campaigns
+@using ConexaoSolidaria.Web.Components.Donations
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>@(_campanha?.Titulo ?? "Campanha")</PageTitle>
+
+@if (_carregando)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="my-4" />
+    <MudSkeleton Height="48px" Width="60%" />
+    <MudSkeleton Height="24px" Class="mt-2" />
+    <MudSkeleton Height="120px" Class="mt-4" />
+}
+else if (_erroCarregar)
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="my-4">
+        Nao foi possivel carregar a campanha agora.
+        <MudButton Size="Size.Small" Class="ml-2" OnClick="CarregarAsync">Tentar novamente</MudButton>
+    </MudAlert>
+}
+else if (_campanha is null)
+{
+    <MudPaper Elevation="0" Class="pa-8 my-4 d-flex flex-column align-center" Style="border:1px dashed var(--mud-palette-lines-default);border-radius:16px;">
+        <MudIcon Icon="@Icons.Material.Filled.SearchOff" Size="Size.Large" Color="Color.Secondary" />
+        <MudText Typo="Typo.h6" Class="mt-2">Campanha nao encontrada</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+            Ela pode ter sido encerrada ou o endereco esta incorreto.
+        </MudText>
+        <MudButton Href="/campanhas" Variant="Variant.Filled" Color="Color.Primary">Ver campanhas</MudButton>
+    </MudPaper>
+}
+else
+{
+    <MudBreadcrumbs Items="_breadcrumbs" Class="px-0 pt-0 pb-3" />
+
+    <header class="cs-page-header">
+        <div class="cs-page-header__content">
+            <span class="cs-page-header__badge">
+                <MudIcon Icon="@Icons.Material.Filled.Campaign" Size="Size.Small" />
+                Campanha
+            </span>
+            <h1 class="cs-page-header__title">@_campanha.Titulo</h1>
+            <p class="cs-page-header__lead">
+                Categoria: <b>@CampaignVisuals.RotuloCategoria(_campanha.Categoria)</b> — Acompanhe os detalhes e apoie esta causa de forma transparente.
+            </p>
+        </div>
+    </header>
+
+    <MudGrid Spacing="4">
+        <MudItem xs="12" md="7">
+            <div class="d-flex align-center flex-wrap gap-2 mb-4">
+                <MudText Typo="Typo.h5" Style="font-weight: 800; color: #071b3f;">Sobre esta campanha</MudText>
+                <MudChip T="string" Color="StatusCor" Variant="Variant.Filled" Size="Size.Small" Class="ml-2">@_campanha.Status</MudChip>
+            </div>
+
+            <div class="campaign-detail__media mb-4">
+                <img src="@CampaignVisuals.ImagemDe(_campanha.Id)" alt="@_campanha.Titulo" />
+            </div>
+
+            <MudText Typo="Typo.body1" Style="white-space:pre-line;" Class="mt-2">
+                @_campanha.Descricao
+            </MudText>
+
+            <MudPaper Elevation="0" Class="pa-3 mt-4" Style="background:var(--surface-alt);border-radius:12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Periodo</MudText>
+                <MudText Typo="Typo.body2">
+                    @_campanha.DataInicio.ToLocalTime().ToString("dd/MM/yyyy", Br)
+                    ate
+                    @_campanha.DataFim.ToLocalTime().ToString("dd/MM/yyyy", Br)
+                    @if (_diasRestantes > 0)
+                    {
+                        <span> — <b>@_diasRestantes</b> dia(s) restante(s)</span>
+                    }
+                    else
+                    {
+                        <span> — encerrada</span>
+                    }
+                </MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="5">
+            <MudPaper Elevation="0" Class="pa-5" Style="border:1px solid var(--mud-palette-lines-default);border-radius:16px;position:sticky;top:88px;">
+                <MudText Typo="Typo.overline" Color="Color.Secondary">Arrecadado</MudText>
+                <MudText Typo="Typo.h4" Color="Color.Primary">@_campanha.ValorTotalArrecadado.ToString("C", Br)</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                    de @_campanha.MetaFinanceira.ToString("C", Br) (meta)
+                </MudText>
+
+                <MudProgressLinear Color="Color.Success"
+                                   Value="_percentual"
+                                   Max="100"
+                                   Size="Size.Large"
+                                   Rounded="true"
+                                   Class="my-2" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    @_percentual.ToString("0.#", Br)% da meta atingida
+                </MudText>
+
+                <MudDivider Class="my-4" />
+
+                @if (!_podeDoar)
+                {
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+                        Esta campanha nao esta aberta para doacoes no momento.
+                    </MudAlert>
+                }
+                else if (_doacaoId is Guid doacao)
+                {
+                    <DonationStatus DoacaoId="doacao" />
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" Class="mt-2"
+                               OnClick="@(() => _doacaoId = null)">
+                        Fazer outra doacao
+                    </MudButton>
+                }
+                else
+                {
+                    <AuthorizeView Roles="Doador">
+                        <Authorized>
+                            @if (_mostrarForm)
+                            {
+                                <DonationForm CampanhaId="_campanha.Id"
+                                              OnDonationAccepted="OnDoacaoAceita"
+                                              OnCancel="@(() => _mostrarForm = false)" />
+                            }
+                            else
+                            {
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                                           Size="Size.Large"
+                                           StartIcon="@Icons.Material.Filled.VolunteerActivism"
+                                           OnClick="@(() => _mostrarForm = true)">
+                                    Doar agora
+                                </MudButton>
+                            }
+                        </Authorized>
+                        <NotAuthorized>
+                            <AuthorizeView Context="anon">
+                                <Authorized>
+                                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+                                        Apenas contas de doador podem realizar doacoes.
+                                    </MudAlert>
+                                </Authorized>
+                                <NotAuthorized>
+                                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                                               Size="Size.Large"
+                                               StartIcon="@Icons.Material.Filled.Login"
+                                               Href="@EntrarParaDoarHref">
+                                        Entrar para doar
+                                    </MudButton>
+                                </NotAuthorized>
+                            </AuthorizeView>
+                        </NotAuthorized>
+                    </AuthorizeView>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private static readonly CultureInfo Br = new("pt-BR");
+
+    [Parameter]
+    public string? Id { get; set; }
+
+    private CampanhaDto? _campanha;
+    private bool _carregando = true;
+    private bool _erroCarregar;
+    private bool _mostrarForm;
+    private Guid? _doacaoId;
+
+    private double _percentual;
+    private int _diasRestantes;
+    private bool _podeDoar;
+    private List<BreadcrumbItem> _breadcrumbs = new();
+
+    private Color StatusCor => _campanha?.Status switch
+    {
+        "Ativa" => Color.Success,
+        "Encerrada" => Color.Default,
+        _ => Color.Warning,
+    };
+
+    private string EntrarParaDoarHref =>
+        $"/entrar?returnUrl={Uri.EscapeDataString($"/campanhas/{Id}")}";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await CarregarAsync();
+    }
+
+    private async Task CarregarAsync()
+    {
+        _carregando = true;
+        _erroCarregar = false;
+        _campanha = null;
+        _doacaoId = null;
+        _mostrarForm = false;
+
+        try
+        {
+            if (!Guid.TryParse(Id, out var campanhaId))
+            {
+                return; // cai no estado "nao encontrada"
+            }
+
+            // GET /api/campanhas/{id} agora e publico (AllowAnonymous): busca direta
+            // por Id, sem o over-fetch de 100 campanhas do modelo anterior.
+            _campanha = await Api.ObterCampanhaAsync(campanhaId);
+
+            if (_campanha is not null)
+            {
+                CalcularDerivados();
+                _breadcrumbs = new()
+                {
+                    new BreadcrumbItem("Campanhas", "/campanhas"),
+                    new BreadcrumbItem(_campanha.Titulo, null, disabled: true),
+                };
+            }
+        }
+        catch (Exception)
+        {
+            _erroCarregar = true;
+        }
+        finally
+        {
+            _carregando = false;
+        }
+    }
+
+    private void CalcularDerivados()
+    {
+        if (_campanha is null)
+        {
+            return;
+        }
+
+        _percentual = _campanha.MetaFinanceira > 0
+            ? Math.Clamp((double)(_campanha.ValorTotalArrecadado / _campanha.MetaFinanceira) * 100d, 0d, 100d)
+            : 0d;
+
+        var restantes = (_campanha.DataFim - DateTimeOffset.Now).TotalDays;
+        _diasRestantes = restantes > 0 ? (int)Math.Ceiling(restantes) : 0;
+
+        _podeDoar = string.Equals(_campanha.Status, "Ativa", StringComparison.OrdinalIgnoreCase)
+                    && _campanha.DataFim > DateTimeOffset.Now;
+    }
+
+    private void OnDoacaoAceita(Guid doacaoId)
+    {
+        _doacaoId = doacaoId;
+        _mostrarForm = false;
+        StateHasChanged();
+    }
+}

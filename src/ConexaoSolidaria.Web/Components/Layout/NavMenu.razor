@@ -1,0 +1,33 @@
+<nav class="cs-nav @(Mobile ? "cs-nav--mobile" : string.Empty)" aria-label="Navegação principal">
+    @* Menu enxuto so com paginas reais (NavLink destaca a rota ativa). As secoes internas da
+       landing (Como funciona, Instituicoes, Impacto) foram removidas do menu por serem ancoras
+       da propria pagina inicial. *@
+    <NavLink href="/" Match="NavLinkMatch.All" @onclick="NotifyNavigate">Início</NavLink>
+    <NavLink href="/campanhas" Match="NavLinkMatch.Prefix" @onclick="NotifyNavigate">Campanhas</NavLink>
+    <NavLink href="/transparencia" Match="NavLinkMatch.Prefix" @onclick="NotifyNavigate">Transparência</NavLink>
+
+    <AuthorizeView Roles="Doador">
+        <NavLink class="cs-nav__private" href="/doador" Match="NavLinkMatch.All" @onclick="NotifyNavigate">
+            Meu painel
+        </NavLink>
+        <NavLink class="cs-nav__private" href="/doador/doacoes" Match="NavLinkMatch.Prefix" @onclick="NotifyNavigate">
+            Minhas doações
+        </NavLink>
+    </AuthorizeView>
+
+    <AuthorizeView Roles="GestorONG">
+        <NavLink class="cs-nav__private" href="/gestor" Match="NavLinkMatch.All" @onclick="NotifyNavigate">
+            Painel gestor
+        </NavLink>
+        <NavLink class="cs-nav__private" href="/gestor/campanhas/nova" Match="NavLinkMatch.Prefix" @onclick="NotifyNavigate">
+            Nova campanha
+        </NavLink>
+    </AuthorizeView>
+</nav>
+
+@code {
+    [Parameter] public bool Mobile { get; set; }
+    [Parameter] public EventCallback OnNavigate { get; set; }
+
+    private Task NotifyNavigate() => OnNavigate.InvokeAsync();
+}

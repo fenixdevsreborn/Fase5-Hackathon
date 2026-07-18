@@ -1,0 +1,25 @@
+@* Esqueleto de carregamento em grade, imitando os CampaignCard. *@
+<MudGrid>
+    @for (var i = 0; i < Count; i++)
+    {
+        <MudItem xs="12" sm="6" md="4">
+            <MudCard Elevation="1" Style="height:100%;">
+                <MudCardContent>
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="70%" Height="30px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="100%" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="85%" Class="mb-4" />
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="12px" Class="my-2" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="55%" />
+                </MudCardContent>
+                <MudCardActions Class="px-4 pb-4">
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="38px" />
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+    }
+</MudGrid>
+
+@code {
+    /// <summary>Quantidade de cartoes-fantasma exibidos (padrao 3).</summary>
+    [Parameter] public int Count { get; set; } = 3;
+}

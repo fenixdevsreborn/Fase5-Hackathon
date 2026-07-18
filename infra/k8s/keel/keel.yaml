@@ -1,0 +1,136 @@
+# =============================================================================
+# Keel - auto-update das imagens do cluster local a partir do Docker Hub.
+# -----------------------------------------------------------------------------
+# O Keel observa (poll) o registry das imagens dos Deployments anotados com
+# keel.sh/* e, quando o digest da tag muda (ex.: novo push de :latest), atualiza
+# o Deployment e recria o pod - sem intervencao manual.
+#
+# Este manifesto e vendorizado (sem Helm, alinhado ao fluxo kubectl/kustomize do
+# repo). Como os repositorios no Docker Hub sao PUBLICOS, o Keel puxa sem
+# credenciais - nenhum imagePullSecret e necessario aqui.
+#
+# Aplicar:  kubectl apply -f infra/k8s/keel/keel.yaml
+# Logs:     kubectl logs -n keel deploy/keel -f
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keel
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: keel
+  namespace: keel
+  labels:
+    app: keel
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: keel
+  labels:
+    app: keel
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces", "secrets"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "watch", "list", "update", "create"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "watch", "list", "create"]
+  # Recursos que o Keel atualiza quando detecta imagem nova.
+  - apiGroups: ["apps", "extensions"]
+    resources: ["deployments", "daemonsets", "statefulsets"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    verbs: ["get", "list", "watch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: keel
+  labels:
+    app: keel
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: keel
+subjects:
+  - kind: ServiceAccount
+    name: keel
+    namespace: keel
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keel
+  namespace: keel
+  labels:
+    app: keel
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keel
+  template:
+    metadata:
+      labels:
+        app: keel
+    spec:
+      serviceAccountName: keel
+      containers:
+        - name: keel
+          # Tag fixada para reprodutibilidade. Para atualizar o proprio Keel,
+          # troque a versao aqui (releases em github.com/keel-hq/keel/releases).
+          image: keelhq/keel:0.20.0
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/keel"]
+          env:
+            # Namespace do proprio Keel (usado para ConfigMaps de aprovacao).
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            # Liga o modo poll: o Keel consulta o registry periodicamente.
+            # O intervalo por Deployment vem da anotacao keel.sh/pollSchedule.
+            - name: POLL
+              value: "1"
+            # Sem Helm/GCR neste ambiente.
+            - name: HELM_PROVIDER
+              value: "0"
+          ports:
+            - containerPort: 9300
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9300
+            initialDelaySeconds: 30
+            timeoutSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+# API/admin do Keel (aprovacoes, /healthz). Opcional para o fluxo automatico.
+apiVersion: v1
+kind: Service
+metadata:
+  name: keel
+  namespace: keel
+  labels:
+    app: keel
+spec:
+  type: ClusterIP
+  selector:
+    app: keel
+  ports:
+    - name: keel
+      port: 9300
+      targetPort: 9300

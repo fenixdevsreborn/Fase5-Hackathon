@@ -1,0 +1,114 @@
+# Habilita os plugins do broker: management (UI) + prometheus (metricas em :15692).
+# Montado em /etc/rabbitmq/enabled_plugins para o Prometheus scrapear rabbitmq_*.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-enabled-plugins
+data:
+  enabled_plugins: |
+    [rabbitmq_management,rabbitmq_prometheus].
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  labels:
+    app: rabbitmq
+spec:
+  # ClusterIP #K8S-004: AMQP e a UI de management ficam internos.
+  # A UI de management (15672) e acessada na demo via kubectl port-forward.
+  # Tambem serve como governing service do StatefulSet.
+  type: ClusterIP
+  selector:
+    app: rabbitmq
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: amqp
+    - name: management
+      port: 15672
+      targetPort: management
+    - name: prometheus
+      port: 15692
+      targetPort: prometheus
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+  labels:
+    app: rabbitmq
+    app.kubernetes.io/component: broker
+spec:
+  # Persistencia #K8S-003: StatefulSet + volumeClaimTemplates (fila/mnesia sobrevive a restart).
+  serviceName: rabbitmq
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      # rabbitmq roda como uid 999; fsGroup garante o PVC gravavel.
+      securityContext:
+        fsGroup: 999
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:4-management
+          ports:
+            - name: amqp
+              containerPort: 5672
+            - name: management
+              containerPort: 15672
+            - name: prometheus
+              containerPort: 15692
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: rabbitmq-user
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: conexao-solidaria-secret
+                  key: rabbitmq-password
+          volumeMounts:
+            - name: rabbitmq-data
+              mountPath: /var/lib/rabbitmq
+            - name: enabled-plugins
+              mountPath: /etc/rabbitmq/enabled_plugins
+              subPath: enabled_plugins
+          readinessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "status"]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: enabled-plugins
+          configMap:
+            name: rabbitmq-enabled-plugins
+  volumeClaimTemplates:
+    - metadata:
+        name: rabbitmq-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi
