@@ -45,3 +45,61 @@ spec:
             limits:
               cpu: "1"
               memory: 768Mi
+---
+# imagePullPolicy: Always nas 5 imagens de aplicacao. As imagens agora vem do
+# Docker Hub (junonn5/conexao-solidaria-<svc>:latest); com Always, o rollout que o
+# Keel dispara ao detectar novo digest de :latest baixa de fato a imagem atualizada.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity-api
+spec:
+  template:
+    spec:
+      containers:
+        - name: identity-api
+          imagePullPolicy: Always
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: campaigns-api
+spec:
+  template:
+    spec:
+      containers:
+        - name: campaigns-api
+          imagePullPolicy: Always
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: donations-worker
+spec:
+  template:
+    spec:
+      containers:
+        - name: donations-worker
+          imagePullPolicy: Always
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+spec:
+  template:
+    spec:
+      containers:
+        - name: gateway
+          imagePullPolicy: Always
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  template:
+    spec:
+      containers:
+        - name: web
+          imagePullPolicy: Always

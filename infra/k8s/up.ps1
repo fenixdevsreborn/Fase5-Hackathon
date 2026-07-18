@@ -2,27 +2,41 @@
 # up.ps1 - Sobe TODO o stack do Conexao Solidaria no Kubernetes do Docker Desktop
 # com UM comando, incluindo o Secret (gerado a partir do .env da raiz do repo).
 #
+# As imagens das 5 apps vem do Docker Hub (junonn5/conexao-solidaria-<svc>:latest,
+# publicadas por infra/k8s/push-dockerhub.ps1); o node baixa direto do registry, sem
+# o antigo ctr import. O Keel fica no cluster observando essas tags e recria os pods
+# quando um novo push de :latest muda o digest.
+#
 # Faz, em ordem (fluxo validado ao vivo - ver ReadmeKubernetes.md):
 #   1. seleciona o contexto docker-desktop
-#   2. build das 5 imagens :local (contexto = raiz do repo)
-#   3. importa as imagens no node kind (ctr) - sem isso: ErrImageNeverPull
-#   4. cria o namespace e o Secret 'conexao-solidaria-secret' a partir do .env
+#   2. (opcional, -Publish) build + push das 5 imagens para o Docker Hub
+#   3. cria o namespace e o Secret 'conexao-solidaria-secret' a partir do .env
+#   4. instala o Keel (auto-update das imagens)
 #   5. kubectl apply -k (postgres, rabbitmq, es, Jobs de migracao, deployments)
 #   6. espera StatefulSets + Jobs de migracao e reinicia as APIs (evita CrashLoop)
 #   7. aguarda o rollout e imprime pods/services + URLs de acesso
+#   8. sobe os port-forwards em segundo plano (ja liberados; use -NoForward p/ desligar)
 #
 # Uso:
-#   pwsh infra/k8s/up.ps1              # build + deploy completo
-#   pwsh infra/k8s/up.ps1 -SkipBuild   # redeploy sem reconstruir as imagens
+#   pwsh infra/k8s/up.ps1                # deploy puxando as imagens do Docker Hub
+#   $env:DOCKERHUB_TOKEN="<PAT>"
+#   pwsh infra/k8s/up.ps1 -Publish       # publica no Docker Hub antes de subir
+#   pwsh infra/k8s/up.ps1 -NoForward     # nao inicia os port-forwards automaticos
 #
 # Pre-requisitos:
 #   - Docker Desktop com Kubernetes habilitado (node 'desktop-control-plane').
 #   - kubectl no PATH.
 #   - .env preenchido na raiz do repo (ver .env.example).
+#   - Imagens ja publicadas no Docker Hub (rode com -Publish, ou push-dockerhub.ps1 antes).
 #   - Docker Compose parado (docker compose down) para nao conflitar portas.
 # =============================================================================
 [CmdletBinding()]
 param(
+    # Build + push das 5 imagens para o Docker Hub antes de subir a stack.
+    [switch]$Publish,
+    # Nao inicia os port-forwards automaticos ao final (apenas imprime os comandos).
+    [switch]$NoForward,
+    # Compat: aceito e ignorado (o build local + ctr import saiu do fluxo padrao).
     [switch]$SkipBuild
 )
 
@@ -33,16 +47,6 @@ $repoRoot  = Split-Path -Parent (Split-Path -Parent $scriptDir) # raiz do repo
 $overlay   = Join-Path $scriptDir "overlays/local"
 $ns        = "conexao-solidaria"
 $node      = "desktop-control-plane"
-
-# Servico logico -> Dockerfile (relativo a raiz do repo). Casa com os nomes de
-# imagem em overlays/local/kustomization.yaml (conexao-solidaria/<svc>:local).
-$services = [ordered]@{
-    "identity-api"     = "src/ConexaoSolidaria.Identity.Api/Dockerfile"
-    "campaigns-api"    = "src/ConexaoSolidaria.Campaigns.Api/Dockerfile"
-    "donations-worker" = "src/ConexaoSolidaria.Donations.Worker/Dockerfile"
-    "gateway"          = "src/ConexaoSolidaria.Gateway/Dockerfile"
-    "web"              = "src/ConexaoSolidaria.Web/Dockerfile"
-}
 
 function Write-Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 
@@ -59,37 +63,22 @@ if ($LASTEXITCODE -ne 0 -and ($probe -match 'x509|certificate signed by unknown 
     kubectl config set-cluster docker-desktop --insecure-skip-tls-verify=true | Out-Null
 }
 
-# --- 2) Build das imagens (contexto = raiz do repo) -------------------------
+# --- 2) (Opcional) Publicar as imagens no Docker Hub ------------------------
+# As imagens das apps vem do Docker Hub; o node as baixa do registry (sem ctr
+# import). Com -Publish, build + push das 5 imagens antes de subir a stack.
 if ($SkipBuild) {
-    Write-Step "Pulando o build (-SkipBuild)."
+    Write-Host "    (-SkipBuild aceito e ignorado: o build local saiu do fluxo; use -Publish para publicar)" -ForegroundColor DarkGray
+}
+if ($Publish) {
+    Write-Step "Publicando as imagens no Docker Hub (push-dockerhub.ps1)..."
+    & (Join-Path $scriptDir "push-dockerhub.ps1")
+    if ($LASTEXITCODE -ne 0) { throw "push-dockerhub.ps1 falhou" }
 }
 else {
-    Write-Step "Build das 5 imagens locais (contexto: $repoRoot)..."
-    Push-Location $repoRoot
-    try {
-        foreach ($svc in $services.Keys) {
-            $dockerfile = $services[$svc]
-            $tag = "conexao-solidaria/$svc`:local"
-            Write-Host "    -> $tag  ($dockerfile)" -ForegroundColor DarkGray
-            docker build -f $dockerfile -t $tag .
-            if ($LASTEXITCODE -ne 0) { throw "docker build falhou para $svc" }
-        }
-    }
-    finally { Pop-Location }
+    Write-Step "Usando as imagens ja publicadas no Docker Hub (junonn5/conexao-solidaria-*:latest)."
 }
 
-# --- 3) Importar as imagens no node kind (passo critico) --------------------
-# O k8s do Docker Desktop roda num node kind com containerd proprio, separado do
-# daemon do Docker. Sem importar, os pods ficam em ErrImageNeverPull.
-Write-Step "Importando as imagens no node '$node' (ctr -n k8s.io)..."
-foreach ($svc in $services.Keys) {
-    $tag = "conexao-solidaria/$svc`:local"
-    Write-Host "    -> import $tag" -ForegroundColor DarkGray
-    docker save $tag | docker exec -i $node ctr -n k8s.io images import -
-    if ($LASTEXITCODE -ne 0) { throw "falha ao importar $tag no node" }
-}
-
-# --- 4) Namespace + Secret (gerado do .env) ---------------------------------
+# --- 3) Namespace + Secret (gerado do .env) ---------------------------------
 Write-Step "Aplicando o namespace..."
 kubectl apply -f (Join-Path $scriptDir "base/namespace.yaml") | Out-Null
 
@@ -135,6 +124,13 @@ $literals = @(
 kubectl create secret generic conexao-solidaria-secret -n $ns @literals --dry-run=client -o yaml | kubectl apply -f -
 if ($LASTEXITCODE -ne 0) { throw "falha ao aplicar o Secret" }
 
+# --- 4) Keel (auto-update das imagens a partir do Docker Hub) ----------------
+# Idempotente. Observa as tags :latest dos Deployments anotados (keel.sh/*) e
+# recria os pods quando um novo push muda o digest. Ver infra/k8s/keel/keel.yaml.
+Write-Step "Instalando/atualizando o Keel (auto-update)..."
+kubectl apply -f (Join-Path $scriptDir "keel/keel.yaml")
+if ($LASTEXITCODE -ne 0) { throw "falha ao aplicar o Keel" }
+
 # --- 5) Deploy completo (Kustomize) -----------------------------------------
 Write-Step "Aplicando a stack completa (kubectl apply -k)..."
 kubectl apply -k $overlay
@@ -171,15 +167,53 @@ kubectl get pods,svc -n $ns -o wide
 
 Write-Host ""
 Write-Host "Stack no ar (12 pods)." -ForegroundColor Green
+
+# --- 8) Port-forwards (ja liberados quando a stack sobe) --------------------
+# Os Services sao ClusterIP e a NetworkPolicy default-deny bloqueia acesso direto;
+# o caminho de acesso local e o port-forward. Aqui eles sobem sozinhos, em segundo
+# plano, e continuam vivos apos o script terminar (svc/gateway ja pronto p/ Postman).
+# Encerre com down.ps1, com -NoForward para nem subir, ou Stop-Process nos PIDs salvos.
+$forwards = @(
+    @{ Svc = "web";           Map = "18088:80";    Url = "http://localhost:18088";         Desc = "App (Blazor)" }
+    @{ Svc = "gateway";       Map = "18080:80";    Url = "http://localhost:18080/api/...";  Desc = "API via Gateway (Postman)" }
+    @{ Svc = "identity-api";  Map = "18081:80";    Url = "http://localhost:18081/swagger";  Desc = "Swagger Identity" }
+    @{ Svc = "campaigns-api"; Map = "18082:80";    Url = "http://localhost:18082/swagger";  Desc = "Swagger Campaigns" }
+    @{ Svc = "grafana";       Map = "3000:3000";   Url = "http://localhost:3000";           Desc = "Grafana" }
+    @{ Svc = "prometheus";    Map = "9090:9090";   Url = "http://localhost:9090";           Desc = "Prometheus" }
+    @{ Svc = "rabbitmq";      Map = "15672:15672"; Url = "http://localhost:15672";          Desc = "RabbitMQ Management" }
+)
+$pidFile = Join-Path ([System.IO.Path]::GetTempPath()) "conexao-solidaria-portforward.pids"
+
 Write-Host ""
-Write-Host "Acesso local recomendado - port-forward (NAO passa pela NetworkPolicy):" -ForegroundColor Green
-Write-Host "  kubectl port-forward -n $ns svc/web           18088:80    # App:  http://localhost:18088" -ForegroundColor Green
-Write-Host "  kubectl port-forward -n $ns svc/gateway       18080:80    # API (Postman): http://localhost:18080/api/..." -ForegroundColor Green
-Write-Host "  kubectl port-forward -n $ns svc/grafana        3000:3000  # Grafana (metricas/dashboards): http://localhost:3000" -ForegroundColor Green
-Write-Host "  kubectl port-forward -n $ns svc/prometheus     9090:9090  # Prometheus (targets/PromQL):   http://localhost:9090" -ForegroundColor Green
-Write-Host "  kubectl port-forward -n $ns svc/identity-api  18081:80    # Swagger Identity:  http://localhost:18081/swagger" -ForegroundColor Green
-Write-Host "  kubectl port-forward -n $ns svc/campaigns-api 18082:80    # Swagger Campaigns: http://localhost:18082/swagger" -ForegroundColor Green
-Write-Host "  kubectl port-forward -n $ns svc/rabbitmq     15672:15672  # RabbitMQ Management: http://localhost:15672" -ForegroundColor Green
+if ($NoForward) {
+    Write-Host "Port-forward automatico desativado (-NoForward). Comandos manuais:" -ForegroundColor Green
+    foreach ($f in $forwards) {
+        Write-Host ("  kubectl port-forward -n {0} svc/{1,-14} {2,-11} # {3}" -f $ns, $f.Svc, $f.Map, $f.Url) -ForegroundColor Green
+    }
+}
+else {
+    Write-Step "Liberando os port-forwards em segundo plano..."
+    # Encerra port-forwards anteriores deste namespace (evita 'address already in use' no re-run).
+    Get-CimInstance Win32_Process -Filter "Name = 'kubectl.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -match 'port-forward' -and $_.CommandLine -match [regex]::Escape($ns) } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
+    $logDir = Join-Path ([System.IO.Path]::GetTempPath()) "conexao-solidaria-pf-logs"
+    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+    $pfPids = @()
+    foreach ($f in $forwards) {
+        $pfArgs = @("port-forward", "-n", $ns, "svc/$($f.Svc)", $f.Map)
+        $p = Start-Process -FilePath "kubectl" -ArgumentList $pfArgs -WindowStyle Hidden -PassThru `
+                 -RedirectStandardOutput (Join-Path $logDir "$($f.Svc).log") `
+                 -RedirectStandardError  (Join-Path $logDir "$($f.Svc).err")
+        $pfPids += $p.Id
+        Write-Host ("    {0,-28} {1,-32} (svc/{2} {3})" -f $f.Desc, $f.Url, $f.Svc, $f.Map) -ForegroundColor Green
+    }
+    $pfPids | Set-Content -Path $pidFile
+    Write-Host ""
+    Write-Host "Port-forwards ativos e continuam apos este script (PIDs: $pidFile; logs: $logDir)." -ForegroundColor DarkGray
+    Write-Host "Encerrar: pwsh infra/k8s/down.ps1  (ou Stop-Process -Id (Get-Content '$pidFile'))." -ForegroundColor DarkGray
+}
 Write-Host ""
 Write-Host "RabbitMQ Management: login com RABBITMQ_USER / RABBITMQ_PASSWORD do .env." -ForegroundColor DarkGray
 Write-Host "  Demo da mensageria: filas doacoes-recebidas (worker), doacoes.retry.10s/60s, doacoes.dead-letter" -ForegroundColor DarkGray
@@ -187,7 +221,7 @@ Write-Host "  e exchanges conexao-solidaria (direct/outbox) + conexao-solidaria.
 Write-Host "Grafana: login com GRAFANA_ADMIN_USER / GRAFANA_ADMIN_PASSWORD do .env." -ForegroundColor DarkGray
 Write-Host "  Dashboards 'Conexao Solidaria' (Aplicacao, Negocio, Mensageria, Saude) ja vem provisionados." -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "Teste rapido no Postman (via gateway, apos o port-forward svc/gateway 18080:80):" -ForegroundColor Green
+Write-Host "Teste rapido no Postman (via gateway, ja liberado em http://localhost:18080):" -ForegroundColor Green
 Write-Host "  POST http://localhost:18080/api/auth/cadastro-doador  (publico) - cria um doador e retorna o JWT" -ForegroundColor Green
 Write-Host '        body (JSON): { "nomeCompleto": "Teste", "email": "teste@ex.com", "cpf": "<CPF valido>", "senha": "Senha@123" }' -ForegroundColor DarkGray
 Write-Host "  POST http://localhost:18080/api/auth/login            (publico) - autentica e retorna o JWT" -ForegroundColor Green

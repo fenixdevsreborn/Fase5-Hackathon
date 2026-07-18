@@ -5,6 +5,11 @@ metadata:
   labels:
     app: identity-api
     app.kubernetes.io/component: api
+  annotations:
+    # Keel: auto-update quando o digest de :latest mudar no Docker Hub (ver infra/k8s/keel/).
+    keel.sh/policy: force
+    keel.sh/trigger: poll
+    keel.sh/pollSchedule: "@every 1m"
 spec:
   replicas: 1
   selector:

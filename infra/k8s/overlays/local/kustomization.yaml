@@ -6,24 +6,27 @@ namespace: conexao-solidaria
 resources:
   - ../../base
 
-# Tags das imagens locais (build com Docker Desktop). Trocar aqui para apontar
-# para um registry/tag diferente sem editar a base.
+# Imagens publicadas no Docker Hub (junonn5/conexao-solidaria-<svc>:latest) via
+# infra/k8s/push-dockerhub.ps1. O node baixa direto do registry (nao precisa mais
+# do ctr import). O Keel observa estas tags :latest e recria os pods quando o
+# digest muda - ver anotacoes keel.sh/* nos Deployments da base e infra/k8s/keel/.
+# O transformer remapeia tambem os Jobs de migracao, que reusam as imagens das APIs.
 images:
   - name: conexao-solidaria/identity-api
-    newTag: local
-  # campaigns-api e web usam a tag catv1: com imagePullPolicy=IfNotPresent e imagem local
-  # (sem registry), reusar a MESMA tag apos um rebuild faz o kubelet manter a imagem antiga
-  # ja presente no node. Uma tag nova forca o node a importar o build atual. Ao alterar essas
-  # imagens novamente, gere uma tag nova (ex.: catv2) e atualize aqui.
+    newName: junonn5/conexao-solidaria-identity-api
+    newTag: latest
   - name: conexao-solidaria/campaigns-api
-    newTag: catv1
+    newName: junonn5/conexao-solidaria-campaigns-api
+    newTag: latest
   - name: conexao-solidaria/donations-worker
-    newTag: local
+    newName: junonn5/conexao-solidaria-donations-worker
+    newTag: latest
   - name: conexao-solidaria/gateway
-    newTag: local
-  # catv8: acentuacao completa da landing (hero, secoes, passos) e do footer.
+    newName: junonn5/conexao-solidaria-gateway
+    newTag: latest
   - name: conexao-solidaria/web
-    newTag: catv8
+    newName: junonn5/conexao-solidaria-web
+    newTag: latest
 
 # Ajustes especificos do ambiente local (Docker Desktop):
 #  - expoe Gateway e Web via NodePort (fallback sem nginx ingress controller);

@@ -118,22 +118,22 @@ Os manifestos foram reestruturados em **Kustomize** (`infra/k8s/base/` + `infra/
 
 > **Deploy validado ao vivo** (Docker Desktop k8s v1.36.1): build das 5 imagens -> carga no node -> Secret -> `kubectl apply -k`. Resultado: 12 pods `Running 1/1`, Jobs de migracao `Complete`, E2E de doacao processada em ~3s, read model populado e consumer de notificacoes conectado. Achado operacional: a NetworkPolicy precisa liberar os Jobs de migracao (`app=*-migrations`) para o Postgres; sem isso o schema nao nasce.
 
+> O caminho mais simples é `pwsh infra/k8s/up.ps1` (um comando: Secret a partir do `.env`, Keel e `kubectl apply -k`). As imagens vêm do Docker Hub — veja **[Publicar no Docker Hub + auto-update](#publicar-no-docker-hub--auto-update-keel)** logo abaixo. Passo a passo manual equivalente:
+
 ```powershell
 kubectl config use-context docker-desktop
 
-# 1) Build das imagens (contexto na raiz do repo) — inclui Gateway e Web
-docker build -f src/ConexaoSolidaria.Identity.Api/Dockerfile    -t conexao-solidaria/identity-api:local .
-docker build -f src/ConexaoSolidaria.Campaigns.Api/Dockerfile   -t conexao-solidaria/campaigns-api:local .
-docker build -f src/ConexaoSolidaria.Donations.Worker/Dockerfile -t conexao-solidaria/donations-worker:local .
-docker build -f src/ConexaoSolidaria.Gateway/Dockerfile         -t conexao-solidaria/gateway:local .
-docker build -f src/ConexaoSolidaria.Web/Dockerfile             -t conexao-solidaria/web:local .
+# 1) Publicar as 5 imagens no Docker Hub (junonn5/conexao-solidaria-<svc>:latest)
+$env:DOCKERHUB_TOKEN = "<seu_PAT_do_docker_hub>"
+pwsh infra/k8s/push-dockerhub.ps1
 
 # 2) Secret (fora do Git). Preencha os placeholders antes de aplicar.
 Copy-Item infra/k8s/secret.example.yaml infra/k8s/secret.yaml
 # edite infra/k8s/secret.yaml preenchendo os placeholders <...>
 kubectl apply -f infra/k8s/secret.yaml
 
-# 3) Deploy (Kustomize)
+# 3) Keel (auto-update das imagens) + deploy (Kustomize)
+kubectl apply -f infra/k8s/keel/keel.yaml
 kubectl apply -k infra/k8s/overlays/local
 
 # 4) (Opcional) smoke test automatizado
@@ -143,7 +143,9 @@ kubectl get pods -n conexao-solidaria
 kubectl get svc  -n conexao-solidaria
 ```
 
-A entrada externa e o Ingress nginx no host `conexao-solidaria.local` (mapeie no `hosts` se necessario). Para acessar servicos internos de observabilidade/infra, use `port-forward`:
+A entrada externa e o Ingress nginx no host `conexao-solidaria.local` (mapeie no `hosts` se necessario).
+
+> O `up.ps1` **ja sobe os principais port-forwards em segundo plano** ao final do deploy (web `18088`, gateway `18080`, identity `18081`, campaigns `18082`, grafana `3000`, prometheus `9090`, rabbitmq `15672`) — eles continuam ativos apos o script e sao encerrados pelo `down.ps1`. Use `up.ps1 -NoForward` para desativar. Para servicos nao cobertos (ou fluxo manual), use `port-forward` direto:
 
 ```powershell
 kubectl port-forward -n conexao-solidaria svc/grafana  3000:3000
@@ -152,6 +154,32 @@ kubectl port-forward -n conexao-solidaria svc/zabbix-web 8085:8080
 ```
 
 > Renderizar o YAML final sem aplicar: `kubectl kustomize infra/k8s/overlays/local`. Detalhes completos em [infra/k8s/README.md](infra/k8s/README.md).
+
+### Publicar no Docker Hub + auto-update (Keel)
+
+O overlay local aponta para as imagens publicadas no Docker Hub (`junonn5/conexao-solidaria-<svc>:latest`), então o node as baixa direto do registry — não é mais preciso o `ctr import` manual. O **Keel** (instalado por `up.ps1` em `infra/k8s/keel/keel.yaml`) observa essas tags e, quando um novo push muda o digest de `:latest`, recria os pods sozinho (~1 min, `keel.sh/pollSchedule`).
+
+Fluxo:
+
+```powershell
+# 1) Publicar as 5 imagens no Docker Hub (token via env — NUNCA versionado)
+$env:DOCKERHUB_TOKEN = "<seu_PAT_do_docker_hub>"
+pwsh infra/k8s/push-dockerhub.ps1
+
+# 2) Subir a stack (puxa as imagens do Docker Hub e instala o Keel)
+pwsh infra/k8s/up.ps1
+#   ou, publicando e subindo de uma vez:
+pwsh infra/k8s/up.ps1 -Publish
+
+# 3) A partir daqui, para "soltar uma imagem nova" basta republicar:
+pwsh infra/k8s/push-dockerhub.ps1   # o Keel detecta e atualiza os pods rodando
+
+# Acompanhar o auto-update
+kubectl get pods -n conexao-solidaria -w
+kubectl logs -n keel deploy/keel -f
+```
+
+> O `docker login` usa `--password-stdin` lendo `$env:DOCKERHUB_TOKEN`; o token não é gravado em disco. Os repositórios são públicos, então o Keel puxa sem credenciais. Para outro usuário/registry, use `-User` em `push-dockerhub.ps1` e ajuste o bloco `images:` do overlay.
 
 ## Docker Compose (alternativa)
 
