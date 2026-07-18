@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Autenticacao e Autorizacao",
+    "subtitle": "Cadastro/login com BCrypt, emissao de JWT HS256 e chamada autorizada por policy",
+    "viewBox": [920, 840]
+  },
+  "participants": [
+    { "id": "user", "type": "external", "label": "Usuario", "sublabel": "navegador" },
+    { "id": "web", "type": "frontend", "label": "Web", "sublabel": "Blazor" },
+    { "id": "store", "type": "database", "label": "Storage", "sublabel": "Protected" },
+    { "id": "gw", "type": "security", "label": "Gateway", "sublabel": "YARP" },
+    { "id": "identity", "type": "backend", "label": "Identity", "sublabel": "Api" },
+    { "id": "iddb", "type": "database", "label": "Postgres", "sublabel": "identitydb" },
+    { "id": "campaigns", "type": "backend", "label": "Campaigns", "sublabel": "Api" }
+  ],
+  "segments": [
+    { "from": 164, "to": 512, "label": "01 / LOGIN E EMISSAO DO JWT" },
+    { "from": 522, "to": 750, "label": "02 / CHAMADA AUTORIZADA - RBAC" }
+  ],
+  "activations": [
+    { "participant": "identity", "from": 272, "to": 370, "type": "backend" },
+    { "participant": "campaigns", "from": 608, "to": 668, "type": "backend" }
+  ],
+  "messages": [
+    { "from": "user", "to": "web", "y": 180, "label": "email/CPF + senha", "variant": "emphasis" },
+    { "from": "web", "to": "gw", "y": 215, "label": "POST /api/auth/login", "variant": "emphasis" },
+    { "from": "gw", "to": "identity", "y": 250, "label": "rate limit auth 10/min", "variant": "security" },
+    { "from": "identity", "to": "iddb", "y": 285, "label": "busca usuario", "variant": "emphasis" },
+    { "from": "iddb", "to": "identity", "y": 320, "label": "AppUser + hash", "variant": "return" },
+    { "from": "identity", "to": "gw", "y": 355, "label": "BCrypt.Verify -> JWT HS256", "variant": "security" },
+    { "from": "gw", "to": "web", "y": 390, "label": "200 AuthResponse", "variant": "return" },
+    { "from": "web", "to": "store", "y": 425, "label": "grava cs_access_token", "variant": "security" },
+    { "from": "store", "to": "web", "y": 460, "label": "claims (role)", "variant": "return" },
+    { "from": "web", "to": "user", "y": 495, "label": "AuthenticationStateChanged", "variant": "return" },
+
+    { "from": "user", "to": "web", "y": 545, "label": "cria campanha", "variant": "emphasis" },
+    { "from": "web", "to": "gw", "y": 580, "label": "POST /api/campanhas", "variant": "emphasis" },
+    { "from": "gw", "to": "campaigns", "y": 615, "label": "repassa Bearer (nao valida)", "variant": "security" },
+    { "from": "campaigns", "to": "gw", "y": 655, "label": "policy CampaignManagement", "variant": "security" },
+    { "from": "gw", "to": "web", "y": 690, "label": "201 Created ou 403", "variant": "return" },
+    { "from": "web", "to": "user", "y": 725, "label": "campanha criada", "variant": "return" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Identity.Api",
+      "items": [
+        "Login aceita email OU CPF no mesmo campo",
+        "Senha com BCrypt, CPF validado por Value Object",
+        "Cadastro cria sempre role Doador; Gestor vem por seed",
+        "Erros como ProblemDetails: 422 validacao, 409 conflito"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Token no Blazor",
+      "items": [
+        "ProtectedLocalStorage (cifrado por Data Protection)",
+        "TokenProvider scoped por circuito SignalR",
+        "ApiClient injeta Authorization: Bearer em toda chamada",
+        "JwtAuthStateProvider rejeita token expirado e degrada p/ anonimo"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Autorizacao e defesa",
+      "items": [
+        "Policies: CampaignManagement (GestorONG), DonationCreation (Doador)",
+        "Gateway nao valida JWT - a decisao fica nas APIs",
+        "Rate limit por IP: auth 10/min, doacao 30/min, global 100/min",
+        "Security headers + HSTS em todas as respostas"
+      ]
+    }
+  ]
+}

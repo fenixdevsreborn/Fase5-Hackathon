@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Conexao Solidaria - Arquitetura Geral",
+    "subtitle": ".NET 10 - Gateway YARP, microsservicos, Outbox + RabbitMQ, CQRS leve e notificacao em tempo real"
+  },
+  "components": [
+    { "id": "users", "type": "external", "label": "Usuario", "sublabel": "Visitante / Doador / Gestor", "pos": [40, 300], "size": [140, 60] },
+    { "id": "openai", "type": "external", "label": "OpenAI", "sublabel": "gpt-4o-mini", "pos": [210, 150], "size": [140, 60], "tag": "opcional" },
+    { "id": "web", "type": "frontend", "label": "Web", "sublabel": "Blazor Server + MudBlazor", "pos": [210, 300], "size": [140, 60] },
+    { "id": "gw", "type": "security", "label": "Gateway", "sublabel": "YARP - rate limit, CSP", "pos": [410, 300], "size": [140, 60], "tag": "entrada unica" },
+    { "id": "identity", "type": "backend", "label": "Identity.Api", "sublabel": "JWT + RBAC", "pos": [600, 40], "size": [150, 60] },
+    { "id": "identitydb", "type": "database", "label": "PostgreSQL", "sublabel": "identitydb", "pos": [810, 40], "size": [140, 60] },
+    { "id": "elastic", "type": "database", "label": "Elasticsearch", "sublabel": "indice pt-BR, fuzzy", "pos": [810, 170], "size": [140, 60] },
+    { "id": "campaigns", "type": "backend", "label": "Campaigns.Api", "sublabel": "campanhas + doacoes", "pos": [600, 300], "size": [150, 60] },
+    { "id": "campaignsdb", "type": "database", "label": "PostgreSQL", "sublabel": "campaignsdb", "pos": [810, 300], "size": [140, 60], "tag": "+ campaign_stats" },
+    { "id": "rabbit", "type": "messagebus", "label": "RabbitMQ", "sublabel": "doacoes-recebidas", "pos": [600, 470], "size": [150, 60] },
+    { "id": "worker", "type": "backend", "label": "Donations.Worker", "sublabel": "consumo idempotente", "pos": [810, 470], "size": [140, 60] },
+    { "id": "notif", "type": "messagebus", "label": "Fanout", "sublabel": "notifications", "pos": [600, 620], "size": [150, 60] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Kubernetes - namespace conexao-solidaria", "wraps": ["web", "gw", "identity", "identitydb", "elastic", "campaigns", "campaignsdb", "rabbit", "worker", "notif"] }
+  ],
+  "connections": [
+    { "from": "users", "to": "web", "label": "HTTPS", "variant": "emphasis" },
+    { "from": "web", "to": "gw", "variant": "emphasis" },
+    { "from": "web", "to": "openai", "label": "assistente IA", "variant": "dashed", "fromSide": "top", "toSide": "bottom", "labelDy": -46 },
+    { "from": "gw", "to": "identity", "label": "/api/auth/*", "variant": "security", "fromSide": "top", "toSide": "left", "route": "orthogonal-v", "labelDy": -120 },
+    { "from": "gw", "to": "campaigns", "label": "campanhas + doacoes", "variant": "emphasis", "labelDy": -32 },
+    { "from": "identity", "to": "identitydb", "label": "EF Core" },
+    { "from": "campaigns", "to": "campaignsdb", "label": "EF Core" },
+    { "from": "campaigns", "to": "elastic", "label": "busca fuzzy", "fromSide": "top", "toSide": "left", "route": "orthogonal-v", "labelDy": -66 },
+    { "from": "campaigns", "to": "rabbit", "label": "Outbox dispatcher", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "labelDy": 56 },
+    { "from": "rabbit", "to": "worker", "variant": "emphasis" },
+    { "from": "worker", "to": "campaignsdb", "label": "incremento atomico", "variant": "emphasis", "fromSide": "top", "toSide": "bottom", "labelDy": -56 },
+    { "from": "worker", "to": "notif", "label": "DoacaoProcessada", "variant": "dashed", "fromSide": "bottom", "toSide": "right", "route": "orthogonal-v", "labelDy": 60 },
+    { "from": "notif", "to": "web", "label": "SignalR tempo real", "variant": "dashed", "fromSide": "left", "toSide": "bottom", "route": "orthogonal-h", "labelDy": 30 }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Entrada e UI",
+      "items": [
+        "Web (Blazor Server) fala apenas com o Gateway",
+        "YARP: rate limit auth 10/min, doacao 30/min, global 100/min",
+        "X-Correlation-Id injetado + security headers e HSTS",
+        "JWT em ProtectedLocalStorage + AuthenticationStateProvider custom"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Dados e confiabilidade",
+      "items": [
+        "Outbox transacional + publisher confirms (sem perda de evento)",
+        "Idempotency-Key na entrada, dedup por EventId no consumo",
+        "Read model campaign_stats (CQRS leve) escrito pelo Worker",
+        "Elasticsearch com fallback para Postgres e circuit breaker"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Operacao",
+      "items": [
+        "Migrations em Jobs dedicados (RunOnStartup=false nos pods)",
+        "OTel -> Collector -> Tempo (traces) e Prometheus/Grafana",
+        "Alertas: DLQ > 0, Outbox > 20 por 2 min, 5xx",
+        "/health e /alive expostos por todos os servicos"
+      ]
+    }
+  ]
+}

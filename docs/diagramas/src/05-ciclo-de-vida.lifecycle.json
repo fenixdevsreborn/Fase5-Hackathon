@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Ciclo de Vida da Doacao",
+    "subtitle": "De Pendente a Processada, com dedup, retry escalonado e saidas terminais",
+    "viewBox": [980, 700]
+  },
+  "lanes": [
+    { "id": "main", "label": "Fases do processamento" },
+    { "id": "eventos", "label": "Interrupcoes e reentrega" },
+    { "id": "terminal", "label": "Estados finais" }
+  ],
+  "states": [
+    { "id": "criada", "type": "start", "label": "Pendente", "sublabel": "202 Accepted", "lane": "main", "col": 0, "step": "01" },
+    { "id": "outbox", "type": "active", "label": "Em Outbox", "sublabel": "aguarda dispatcher", "lane": "main", "col": 1, "step": "02" },
+    { "id": "publicada", "type": "active", "label": "Publicada", "sublabel": "publisher confirms", "lane": "main", "col": 2, "step": "03" },
+    { "id": "consumida", "type": "active", "label": "Em processamento", "sublabel": "Worker consome", "lane": "main", "col": 3, "step": "04" },
+    { "id": "commit", "type": "decision", "label": "Commit", "sublabel": "total + read model", "lane": "main", "col": 4, "step": "05" },
+
+    { "id": "dup", "type": "waiting", "label": "Descartada", "sublabel": "EventId ja visto", "lane": "eventos", "col": 0, "tag": "idempotencia" },
+    { "id": "retry", "type": "waiting", "label": "Retry", "sublabel": "10s -> 60s", "lane": "eventos", "col": 1, "tag": "requeue" },
+
+    { "id": "rejeitada", "type": "failure", "label": "Rejeitada", "sublabel": "campanha encerrada", "lane": "terminal", "col": 0 },
+    { "id": "falha", "type": "failure", "label": "Falha", "sublabel": "dead-letter", "lane": "terminal", "col": 1 },
+    { "id": "processada", "type": "success", "label": "Processada", "sublabel": "comprovante emitido", "lane": "terminal", "col": 2 }
+  ],
+  "transitions": [
+    { "from": "criada", "to": "outbox", "variant": "emphasis" },
+    { "from": "outbox", "to": "publicada", "variant": "emphasis" },
+    { "from": "publicada", "to": "consumida", "variant": "emphasis" },
+    { "from": "consumida", "to": "commit", "variant": "emphasis" },
+    { "from": "commit", "to": "processada", "label": "sucesso", "variant": "emphasis", "fromSide": "bottom", "toSide": "top" },
+    { "from": "consumida", "to": "retry", "label": "erro", "variant": "security", "fromSide": "bottom", "toSide": "top" },
+    { "from": "retry", "to": "falha", "label": "esgotou", "variant": "security", "fromSide": "bottom", "toSide": "top" },
+    { "from": "consumida", "to": "dup", "label": "duplicado", "variant": "dashed", "fromSide": "left", "toSide": "top", "route": "drop", "channelY": 250 },
+    { "from": "criada", "to": "rejeitada", "label": "422 na criacao", "variant": "security", "fromSide": "bottom", "toSide": "left", "route": "drop", "channelY": 408 }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Ciclo de vida da CAMPANHA",
+      "items": [
+        "Rascunho -> Ativa (POST /{id}/ativar)",
+        "Ativa -> Concluida (POST /{id}/concluir)",
+        "Ativa -> Cancelada (POST /{id}/cancelar)",
+        "Concluida e Cancelada sao terminais; mesmo estado e no-op"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Quem move cada estado",
+      "items": [
+        "Pendente: gravado pela Campaigns.Api dentro da transacao",
+        "Publicada: dispatcher de Outbox, nao a request do usuario",
+        "Processada: Donations.Worker apos commit atomico",
+        "Transicao invalida vira DomainRuleException -> 422"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Como o doador enxerga",
+      "items": [
+        "Push em tempo real via fanout + SignalR",
+        "Polling em GET /api/doacoes/{id} como fallback",
+        "404 quando a doacao pertence a outro doador",
+        "Historico completo em GET /api/doacoes/minhas"
+      ]
+    }
+  ]
+}

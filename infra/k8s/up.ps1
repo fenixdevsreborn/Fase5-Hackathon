@@ -17,6 +17,8 @@
 #   6. espera StatefulSets + Jobs de migracao e reinicia as APIs (evita CrashLoop)
 #   7. aguarda o rollout e imprime pods/services + URLs de acesso
 #   8. sobe os port-forwards em segundo plano (ja liberados; use -NoForward p/ desligar)
+#   9. imprime as credenciais de acesso (Blazor/gestor, RabbitMQ, Grafana, Zabbix)
+#      com os valores reais do .env - ver "Acessos e credenciais padrao" no README
 #
 # Uso:
 #   pwsh infra/k8s/up.ps1                # deploy puxando as imagens do Docker Hub
@@ -190,6 +192,7 @@ $forwards = @(
     @{ Svc = "grafana";       Map = "3000:3000";   Url = "http://localhost:3000";           Desc = "Grafana" }
     @{ Svc = "prometheus";    Map = "9090:9090";   Url = "http://localhost:9090";           Desc = "Prometheus" }
     @{ Svc = "rabbitmq";      Map = "15672:15672"; Url = "http://localhost:15672";          Desc = "RabbitMQ Management" }
+    @{ Svc = "zabbix-web";    Map = "8085:8080";   Url = "http://localhost:8085";           Desc = "Zabbix" }
 )
 $pidFile = Join-Path ([System.IO.Path]::GetTempPath()) "conexao-solidaria-portforward.pids"
 
@@ -223,19 +226,58 @@ else {
     Write-Host "Port-forwards ativos e continuam apos este script (PIDs: $pidFile; logs: $logDir)." -ForegroundColor DarkGray
     Write-Host "Encerrar: pwsh infra/k8s/down.ps1  (ou Stop-Process -Id (Get-Content '$pidFile'))." -ForegroundColor DarkGray
 }
+# --- 9) Credenciais de acesso (lidas do .env ja carregado) ------------------
+# Impressas em claro de proposito: e um ensaio LOCAL e a stack nao serve para nada
+# se quem sobe nao souber com que usuario entrar. Os mesmos valores estao na secao
+# "Acessos e credenciais padrao" do README.md.
 Write-Host ""
-Write-Host "RabbitMQ Management: login com RABBITMQ_USER / RABBITMQ_PASSWORD do .env." -ForegroundColor DarkGray
-Write-Host "  Demo da mensageria: filas doacoes-recebidas (worker), doacoes.retry.10s/60s, doacoes.dead-letter" -ForegroundColor DarkGray
-Write-Host "  e exchanges conexao-solidaria (direct/outbox) + conexao-solidaria.notifications (fanout/SignalR)." -ForegroundColor DarkGray
-Write-Host "Grafana: login com GRAFANA_ADMIN_USER / GRAFANA_ADMIN_PASSWORD do .env." -ForegroundColor DarkGray
-Write-Host "  Dashboards 'Conexao Solidaria' (Aplicacao, Negocio, Mensageria, Saude) ja vem provisionados." -ForegroundColor DarkGray
+Write-Host "==================== CREDENCIAIS DE ACESSO (ambiente local) ====================" -ForegroundColor Yellow
+Write-Host ""
+
+function Write-Cred($service, $url, $user, $password, $note) {
+    Write-Host ("  {0}" -f $service) -ForegroundColor Yellow
+    Write-Host ("     URL      {0}" -f $url) -ForegroundColor Gray
+    Write-Host ("     usuario  {0}" -f $user) -ForegroundColor White
+    Write-Host ("     senha    {0}" -f $password) -ForegroundColor White
+    if ($note) { Write-Host ("     {0}" -f $note) -ForegroundColor DarkGray }
+    Write-Host ""
+}
+
+# O gestor so existe se SEED_MANAGER_PASSWORD estava preenchida no primeiro start:
+# sem ela o IdentityDatabaseInitializer pula o seed e nao ha usuario para o /gestor.
+$seedPwd = if ($envVars.ContainsKey("SEED_MANAGER_PASSWORD") -and $envVars["SEED_MANAGER_PASSWORD"]) {
+    $envVars["SEED_MANAGER_PASSWORD"]
+} else {
+    "(SEED_MANAGER_PASSWORD vazia no .env -> gestor NAO foi semeado)"
+}
+
+Write-Cred "App Blazor (gestor ONG)" "http://localhost:18088/entrar" `
+    "gestor@conexaosolidaria.local" $seedPwd `
+    "Doador: crie a conta em http://localhost:18088/cadastrar (a senha e voce quem define)."
+
+Write-Cred "RabbitMQ Management" "http://localhost:15672" `
+    (Require-Env 'RABBITMQ_USER') (Require-Env 'RABBITMQ_PASSWORD') `
+    "Filas doacoes-recebidas, doacoes.retry.10s/60s, doacoes.dead-letter; exchanges conexao-solidaria (direct/outbox) e conexao-solidaria.notifications (fanout/SignalR)."
+
+Write-Cred "Grafana" "http://localhost:3000" `
+    (Require-Env 'GRAFANA_ADMIN_USER') (Require-Env 'GRAFANA_ADMIN_PASSWORD') `
+    "Dashboards 'Conexao Solidaria' (Aplicacao, Negocio, Mensageria, Saude) ja provisionados."
+
+# Atencao: ZABBIX_USER/ZABBIX_PASSWORD do .env sao as credenciais do POSTGRES do
+# Zabbix, nao o login da UI. O frontend usa o default de fabrica Admin/zabbix.
+Write-Cred "Zabbix" "http://localhost:8085" "Admin" "zabbix" `
+    "Default de fabrica do frontend (ZABBIX_USER/ZABBIX_PASSWORD do .env sao do banco, nao da UI)."
+
+Write-Host "  Prometheus http://localhost:9090 e os Swaggers (18081/18082) sobem sem autenticacao." -ForegroundColor DarkGray
+Write-Host "  Valores vindos do .env em $envPath - use apenas localmente." -ForegroundColor DarkGray
+Write-Host "===============================================================================" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Teste rapido no Postman (via gateway, ja liberado em http://localhost:18080):" -ForegroundColor Green
 Write-Host "  POST http://localhost:18080/api/auth/cadastro-doador  (publico) - cria um doador e retorna o JWT" -ForegroundColor Green
 Write-Host '        body (JSON): { "nomeCompleto": "Teste", "email": "teste@ex.com", "cpf": "<CPF valido>", "senha": "Senha@123" }' -ForegroundColor DarkGray
 Write-Host "  POST http://localhost:18080/api/auth/login            (publico) - autentica e retorna o JWT" -ForegroundColor Green
 Write-Host '        body (JSON): { "email": "teste@ex.com", "senha": "Senha@123" }' -ForegroundColor DarkGray
-Write-Host "        admin/gestor semeado: gestor@conexaosolidaria.local / SEED_MANAGER_PASSWORD do .env" -ForegroundColor DarkGray
+Write-Host "        gestor semeado: gestor@conexaosolidaria.local / $seedPwd" -ForegroundColor DarkGray
 Write-Host "  GET  http://localhost:18080/api/auth/me               (Bearer)  - dados do usuario logado" -ForegroundColor Green
 Write-Host "  GET  http://localhost:18080/api/campanhas/search      (publico) - lista/busca campanhas" -ForegroundColor Green
 Write-Host "  Header nas rotas protegidas: Authorization: Bearer {accessToken retornado no login}" -ForegroundColor DarkGray

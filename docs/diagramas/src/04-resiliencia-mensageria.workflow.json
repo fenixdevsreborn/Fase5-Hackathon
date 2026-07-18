@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Resiliencia da Mensageria",
+    "subtitle": "Outbox transacional, publisher confirms, retry escalonado, DLQ e alertas"
+  },
+  "lanes": [
+    { "id": "api", "label": "Campaigns.Api" },
+    { "id": "broker", "label": "RabbitMQ" },
+    { "id": "worker", "label": "Donations.Worker" },
+    { "id": "exceptions", "label": "Retry e Dead Letter", "variant": "exception" },
+    { "id": "ops", "label": "Observabilidade" }
+  ],
+  "phases": [
+    { "id": "gravar", "label": "Gravar", "fromCol": 0, "toCol": 1 },
+    { "id": "publicar", "label": "Publicar", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "processar", "label": "Processar", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["post", "tx", "exch", "consume", "commit"],
+  "nodes": [
+    { "id": "post", "lane": "api", "col": 0, "type": "frontend", "label": "POST doacao", "sublabel": "Idempotency-Key" },
+    { "id": "tx", "lane": "api", "col": 1, "type": "backend", "label": "Transacao", "sublabel": "Donation+Outbox", "tag": "atomico" },
+    { "id": "exch", "lane": "broker", "col": 3, "type": "messagebus", "label": "Exchange", "sublabel": "conexao-solidaria" },
+    { "id": "consume", "lane": "worker", "col": 4, "type": "backend", "label": "Consumo", "sublabel": "dedup EventId" },
+    { "id": "commit", "lane": "worker", "col": 5, "type": "database", "label": "Commit", "sublabel": "total + stats" },
+    { "id": "retry", "lane": "exceptions", "col": 3, "type": "messagebus", "label": "Retry", "sublabel": "10s -> 60s" },
+    { "id": "dlq", "lane": "exceptions", "col": 5, "type": "security", "label": "Dead letter", "sublabel": "doacoes.dead-letter" },
+    { "id": "outboxm", "lane": "ops", "col": 0, "type": "cloud", "label": "Outbox", "sublabel": "pending gauge" },
+    { "id": "alerta", "lane": "ops", "col": 5, "type": "cloud", "label": "Alerta", "sublabel": "Grafana" }
+  ],
+  "edges": [
+    { "from": "post", "to": "tx", "variant": "default" },
+    { "from": "tx", "to": "exch", "label": "publisher confirms", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 },
+    { "from": "exch", "to": "consume", "label": "prefetch 10", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 },
+    { "from": "consume", "to": "commit", "variant": "emphasis" },
+    { "from": "consume", "to": "retry", "label": "erro", "variant": "security", "role": "error", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 },
+    { "from": "retry", "to": "dlq", "label": "esgotou tentativas", "variant": "dashed", "role": "branch" },
+    { "from": "tx", "to": "outboxm", "label": "conexao_outbox_pending", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "route": "drop", "bias": 0.85, "labelSegment": 1 },
+    { "from": "dlq", "to": "alerta", "label": "DLQ > 0", "variant": "security", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Nada se perde na escrita",
+      "items": [
+        "Donation + OutboxMessage + Idempotency-Key na MESMA transacao",
+        "Dispatcher varre outbox_messages pendentes em background",
+        "Indice parcial WHERE PublishedAtUtc IS NULL",
+        "Falha ao publicar mantem a mensagem pendente para nova tentativa"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Nada processa duas vezes",
+      "items": [
+        "EventId gravado em processed_messages (chave primaria)",
+        "Reentrega com EventId conhecido e descartada",
+        "ExecuteUpdateAsync incrementa o total de forma atomica",
+        "Execution strategy do EF cobre falha transitoria do Postgres"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Quando da errado",
+      "items": [
+        "doacoes.retry.10s -> doacoes.retry.60s -> doacoes.dead-letter",
+        "Alertas Grafana: DLQ > 0 e Outbox > 20 por 2 min",
+        "Metricas conexao_dead_letter_messages e publish_failures_total",
+        "Fila e consumidores visiveis via plugin prometheus (:15692)"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Fluxo Assincrono da Doacao",
+    "subtitle": "202 Accepted, Outbox transacional, consumo idempotente e confirmacao em tempo real",
+    "viewBox": [920, 900]
+  },
+  "participants": [
+    { "id": "doador", "type": "external", "label": "Doador", "sublabel": "navegador" },
+    { "id": "web", "type": "frontend", "label": "Web", "sublabel": "Blazor" },
+    { "id": "gw", "type": "security", "label": "Gateway", "sublabel": "YARP" },
+    { "id": "api", "type": "backend", "label": "Campaigns", "sublabel": "Api" },
+    { "id": "db", "type": "database", "label": "Postgres", "sublabel": "campaignsdb" },
+    { "id": "mq", "type": "messagebus", "label": "RabbitMQ", "sublabel": "exchange" },
+    { "id": "worker", "type": "backend", "label": "Worker", "sublabel": "Donations" },
+    { "id": "fanout", "type": "messagebus", "label": "Fanout", "sublabel": "notifications" }
+  ],
+  "segments": [
+    { "from": 164, "to": 448, "label": "01 / INTENCAO - 202 ACCEPTED" },
+    { "from": 458, "to": 642, "label": "02 / OUTBOX -> BROKER -> WORKER" },
+    { "from": 652, "to": 800, "label": "03 / CONFIRMACAO" }
+  ],
+  "activations": [
+    { "participant": "api", "from": 280, "to": 400, "type": "backend" },
+    { "participant": "worker", "from": 540, "to": 675, "type": "backend" }
+  ],
+  "messages": [
+    { "from": "doador", "to": "web", "y": 180, "label": "escolhe valor", "variant": "emphasis" },
+    { "from": "web", "to": "gw", "y": 215, "label": "POST /api/doacoes", "variant": "emphasis" },
+    { "from": "gw", "to": "api", "y": 250, "label": "Idempotency-Key + Bearer", "variant": "security" },
+    { "from": "api", "to": "db", "y": 290, "label": "Donation + Outbox (1 tx)", "variant": "emphasis" },
+    { "from": "db", "to": "api", "y": 325, "label": "commit", "variant": "return" },
+    { "from": "api", "to": "gw", "y": 360, "label": "202 Accepted", "variant": "return" },
+    { "from": "gw", "to": "web", "y": 395, "label": "doacaoId (Pendente)", "variant": "return" },
+    { "from": "web", "to": "doador", "y": 430, "label": "aguardando", "variant": "return" },
+
+    { "from": "api", "to": "db", "y": 475, "label": "varre outbox pendente", "variant": "dashed" },
+    { "from": "api", "to": "mq", "y": 510, "label": "DoacaoRecebidaEvent", "variant": "emphasis" },
+    { "from": "mq", "to": "worker", "y": 545, "label": "prefetch 10", "variant": "emphasis" },
+    { "from": "worker", "to": "db", "y": 585, "label": "dedup + incremento atomico", "variant": "emphasis" },
+    { "from": "db", "to": "worker", "y": 620, "label": "campaign_stats upsert", "variant": "return" },
+
+    { "from": "worker", "to": "fanout", "y": 665, "label": "DoacaoProcessada", "variant": "dashed" },
+    { "from": "fanout", "to": "web", "y": 700, "label": "NotificationConsumer", "variant": "dashed" },
+    { "from": "web", "to": "doador", "y": 735, "label": "comprovante via SignalR", "variant": "emphasis" },
+    { "from": "web", "to": "gw", "y": 775, "label": "fallback GET /api/doacoes/{id}", "variant": "dashed" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Por que 202 e nao 200",
+      "items": [
+        "A API aceita a intencao e responde rapido",
+        "O valor arrecadado so muda apos o Worker processar",
+        "Desacopla recebimento de processamento",
+        "A UI nunca confia apenas no 202"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Exactly-once efetivo",
+      "items": [
+        "Entrada: Idempotency-Key -> DonationId na mesma transacao",
+        "Consumo: EventId gravado em processed_messages",
+        "Publicacao: Outbox + publisher confirms",
+        "Falha ao publicar mantem a mensagem pendente"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Dois caminhos de confirmacao",
+      "items": [
+        "Tempo real: fanout -> NotificationConsumer -> SignalR",
+        "Fallback: polling em GET /api/doacoes/{id}",
+        "traceparent propagado ate o Worker (salto pela fila)",
+        "Erro de consumo vai para retry 10s/60s e depois DLQ"
+      ]
+    }
+  ]
+}

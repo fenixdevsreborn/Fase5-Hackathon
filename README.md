@@ -107,6 +107,27 @@ O **Docker Compose** cobre um subconjunto: infra (Postgres, RabbitMQ, Elasticsea
 
 > Versoes anteriores subiam tudo localmente via `ConexaoSolidaria.AppHost` (.NET Aspire). O AppHost foi **removido** do projeto: o deploy real e Kubernetes, e manter um orquestrador paralelo so para dev duplicava o wiring. Consequencia pratica: nao ha mais um `dotnet run` unico que suba o grafo inteiro. Ver `AD-01`.
 
+## Acessos e credenciais padrao (ambiente local)
+
+> **Ensaio local apenas.** Os valores abaixo sao os defaults do `.env` de desenvolvimento deste repositorio, publicados aqui para que a stack possa ser avaliada sem configuracao extra. **Nao reutilize nenhum deles fora do ambiente local** — em qualquer outro ambiente gere segredos novos a partir do `.env.example`. O `up.ps1` tambem imprime esta tabela (com os valores reais do seu `.env`) ao final do deploy.
+
+| Rota / servico | URL (port-forward do `up.ps1`) | Usuario | Senha | Origem |
+| --- | --- | --- | --- | --- |
+| **App Blazor** — gestor ONG | http://localhost:18088/entrar | `gestor@conexaosolidaria.local` | `Gestor@Local2026` | `SEED_MANAGER_PASSWORD` |
+| **App Blazor** — doador | http://localhost:18088/cadastrar | *voce cria no cadastro* | *voce define* | — |
+| **RabbitMQ Management** | http://localhost:15672 | `conexao` | `localdev_rabbit_S3nh4Forte_2026` | `RABBITMQ_USER` / `RABBITMQ_PASSWORD` |
+| **Grafana** | http://localhost:3000 | `admin` | `localdev_grafana_S3nh4_2026` | `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` |
+| **Zabbix** (frontend) | http://localhost:8085 | `Admin` | `zabbix` | default do proprio Zabbix |
+| **Prometheus** | http://localhost:9090 | — | — | sem autenticacao |
+| **Swagger Identity / Campaigns** | http://localhost:18081/swagger · http://localhost:18082/swagger | — | — | sem autenticacao (rotas protegidas exigem Bearer) |
+| **Postgres** (via `kubectl exec` / port-forward) | `localhost:5432` | `postgres` | `localdev_pg_S3nh4Forte_2026` | `POSTGRES_USER` / `POSTGRES_PASSWORD` |
+
+Observacoes que costumam gerar confusao:
+
+- **O gestor so e semeado se `SEED_MANAGER_PASSWORD` estiver preenchida** no `.env` antes do primeiro start. Sem ela o `IdentityDatabaseInitializer` pula o seed e registra um log de aviso — e nao ha usuario gestor para entrar no `/gestor`. Se ja subiu sem a variavel, preencha o `.env` e recrie o banco (`down.ps1` + `up.ps1`, ou `docker compose down -v`).
+- **`ZABBIX_USER` / `ZABBIX_PASSWORD` do `.env` sao as credenciais do Postgres do Zabbix**, nao o login do frontend. O login da UI e o padrao de fabrica do Zabbix (`Admin` / `zabbix`) e deve ser trocado no primeiro acesso.
+- **A senha do doador nao tem default**: o fluxo esperado e criar a conta em `/cadastrar` (ou via `POST /api/auth/cadastro-doador`) com uma senha que atenda a politica (`Senha@123` serve como exemplo).
+
 ## Kubernetes com Kustomize
 
 Os manifestos foram reestruturados em **Kustomize** (`infra/k8s/base/` + `infra/k8s/overlays/local/`), com hardening de producao: StatefulSet + PVC (postgres, rabbitmq), PVC dedicado (elasticsearch), Services `ClusterIP`, **Ingress nginx** como entrada unica (`/api` -> gateway, `/` -> web), probes (startup `/alive`, readiness `/health`, liveness `/alive`), requests/limits, `securityContext` (non-root `runAsUser 10001`, `readOnlyRootFilesystem`, drop ALL), **NetworkPolicies** (default-deny + allow-list, incluindo `web -> rabbitmq` e `migrations -> postgres`), **Jobs de migracao** (`RunMigrationsOnly=true`; deployments com `Migrations__RunOnStartup=false`), **HPA** (gateway, identity-api, campaigns-api por CPU) e PDB.
@@ -140,11 +161,11 @@ kubectl get svc  -n conexao-solidaria
 
 A entrada externa e o Ingress nginx no host `conexao-solidaria.local` (mapeie no `hosts` se necessario).
 
-> O `up.ps1` **ja sobe os principais port-forwards em segundo plano** ao final do deploy (web `18088`, gateway `18080`, identity `18081`, campaigns `18082`, grafana `3000`, prometheus `9090`, rabbitmq `15672`) — eles continuam ativos apos o script e sao encerrados pelo `down.ps1`. Use `up.ps1 -NoForward` para desativar. Para servicos nao cobertos (ou fluxo manual), use `port-forward` direto:
+> O `up.ps1` **ja sobe os principais port-forwards em segundo plano** ao final do deploy (web `18088`, gateway `18080`, identity `18081`, campaigns `18082`, grafana `3000`, prometheus `9090`, rabbitmq `15672`, zabbix `8085`) — eles continuam ativos apos o script e sao encerrados pelo `down.ps1`. Use `up.ps1 -NoForward` para desativar. Ao final o script **imprime as credenciais de cada rota** (Blazor/gestor, RabbitMQ, Grafana, Zabbix) com os valores reais lidos do seu `.env` — ver [Acessos e credenciais padrao](#acessos-e-credenciais-padrao-ambiente-local). Para fluxo manual:
 
 ```powershell
-kubectl port-forward -n conexao-solidaria svc/grafana  3000:3000
-kubectl port-forward -n conexao-solidaria svc/rabbitmq 15672:15672
+kubectl port-forward -n conexao-solidaria svc/grafana    3000:3000
+kubectl port-forward -n conexao-solidaria svc/rabbitmq   15672:15672
 kubectl port-forward -n conexao-solidaria svc/zabbix-web 8085:8080
 ```
 
@@ -193,23 +214,25 @@ Servicos:
 - Campaigns Swagger: http://localhost:5002/swagger
 - Worker health: http://localhost:5003/health
 - Elasticsearch: http://localhost:9200
-- RabbitMQ: http://localhost:15672 (`RABBITMQ_USER` / `RABBITMQ_PASSWORD` no `.env`)
+- RabbitMQ: http://localhost:15672 (`conexao` / `RABBITMQ_PASSWORD`)
 - Prometheus: http://localhost:9090
-- Grafana: http://localhost:3000 (`GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` no `.env`)
-- Zabbix: http://localhost:8085
+- Grafana: http://localhost:3000 (`admin` / `GRAFANA_ADMIN_PASSWORD`)
+- Zabbix: http://localhost:8085 (`Admin` / `zabbix` — default do frontend)
+
+> No Compose as portas sao fixas e diferentes das do port-forward do Kubernetes (Swagger em `5001`/`5002` em vez de `18081`/`18082`), mas **os usuarios e senhas sao os mesmos** — ambos leem o mesmo `.env`. Tabela completa em [Acessos e credenciais padrao](#acessos-e-credenciais-padrao-ambiente-local).
 
 Usuario gestor criado no seed:
 
 - Email: `gestor@conexaosolidaria.local`
 - Role: `GestorONG`
-- Senha: via variavel de ambiente `Seed__Gestor__Senha` (mapeada de `SEED_MANAGER_PASSWORD` no `.env`, documentada no `.env.example`). Nunca commite a senha real.
+- Senha: `SEED_MANAGER_PASSWORD` do `.env`, injetada como `Seed__Gestor__Senha` (ver `.env.example`). Se a variavel estiver vazia, o seed e **pulado** e nao existe gestor para logar.
 
 ## Interface web (Blazor)
 
 Rotas da aplicacao `ConexaoSolidaria.Web` (abra pelo Ingress ou pelo port-forward `18088`):
 
 - Publico: `/` (landing), `/campanhas`, `/campanhas/{id}`, `/transparencia`
-- Conta: `/entrar`, `/cadastrar`
+- Conta: `/entrar` (gestor semeado: `gestor@conexaosolidaria.local` / `Gestor@Local2026`), `/cadastrar` (cria um doador novo)
 - Doador: `/doador`, `/doador/doacoes` (minhas doacoes), `/doador/doacoes/{id}` (acompanhamento em tempo real da doacao)
 - Gestor: `/gestor` (dashboard + graficos), `/gestor/campanhas/nova`, `/gestor/campanhas/{id}/editar`
 - Diagnostico: `/status`

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conexão Solidária — Mapa de Fluxos</title>
+<script>
+(function () {
+  try {
+    var t = null;
+    try { t = localStorage.getItem('archify-theme'); } catch (_) {}
+    if (t !== 'light' && t !== 'dark') {
+      t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+    document.documentElement.setAttribute('data-theme', t);
+  } catch (_) {}
+})();
+</script>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet" media="print" onload="this.media='all'">
+<style>
+  :root, [data-theme="dark"] {
+    --bg: #020617; --grid: #1e293b; --text: #ffffff; --text-muted: #94a3b8;
+    --text-dim: #475569; --panel: rgba(15,23,42,0.5); --panel-border: #1e293b;
+    --panel-hover: rgba(15,23,42,0.9);
+    --frontend: #22d3ee; --backend: #34d399; --database: #a78bfa;
+    --cloud: #fbbf24; --security: #fb7185; --messagebus: #fb923c; --external: #94a3b8;
+    --toolbar-bg: rgba(15,23,42,0.8); --toolbar-border: #334155; --toolbar-text: #e2e8f0;
+  }
+  [data-theme="light"] {
+    --bg: #f8fafc; --grid: #e2e8f0; --text: #0f172a; --text-muted: #64748b;
+    --text-dim: #94a3b8; --panel: #ffffff; --panel-border: #e2e8f0;
+    --panel-hover: #ffffff;
+    --frontend: #0891b2; --backend: #059669; --database: #7c3aed;
+    --cloud: #d97706; --security: #e11d48; --messagebus: #ea580c; --external: #64748b;
+    --toolbar-bg: rgba(255,255,255,0.92); --toolbar-border: #cbd5e1; --toolbar-text: #334155;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--text); min-height: 100vh; padding: 48px 24px 72px;
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 44px 44px;
+    transition: background-color .2s, color .2s;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; }
+
+  .toggle {
+    position: fixed; top: 16px; right: 16px; z-index: 10;
+    background: var(--toolbar-bg); border: 1px solid var(--toolbar-border);
+    color: var(--toolbar-text); border-radius: 8px; padding: 8px 14px;
+    font: 600 11px/1 'JetBrains Mono', monospace; cursor: pointer;
+    backdrop-filter: blur(8px); letter-spacing: .06em;
+  }
+  .toggle:hover { border-color: var(--backend); }
+
+  header { margin-bottom: 40px; }
+  .eyebrow {
+    font-size: 10px; letter-spacing: .22em; color: var(--backend);
+    font-weight: 700; margin-bottom: 12px;
+  }
+  h1 { font-size: 28px; font-weight: 700; letter-spacing: -.01em; margin-bottom: 10px; }
+  .sub { font-size: 12px; color: var(--text-muted); line-height: 1.75; max-width: 76ch; }
+
+  .stats {
+    display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px;
+  }
+  .stat {
+    border: 1px solid var(--panel-border); background: var(--panel);
+    border-radius: 6px; padding: 8px 12px; font-size: 10px; color: var(--text-muted);
+  }
+  .stat b { color: var(--text); font-weight: 600; }
+
+  .grid {
+    display: grid; gap: 16px; margin-top: 32px;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  }
+  a.card {
+    display: block; text-decoration: none; color: inherit;
+    border: 1px solid var(--panel-border); background: var(--panel);
+    border-radius: 10px; padding: 20px; position: relative;
+    transition: border-color .15s, transform .15s, background .15s;
+  }
+  a.card:hover { border-color: var(--accent); transform: translateY(-2px); background: var(--panel-hover); }
+  a.card::before {
+    content: ''; position: absolute; left: 0; top: 16px; bottom: 16px; width: 3px;
+    background: var(--accent); border-radius: 0 3px 3px 0;
+  }
+  .n { font-size: 10px; color: var(--accent); font-weight: 700; letter-spacing: .16em; }
+  .kind {
+    float: right; font-size: 9px; letter-spacing: .12em; color: var(--text-dim);
+    border: 1px solid var(--panel-border); border-radius: 4px; padding: 3px 7px;
+  }
+  a.card h2 { font-size: 15px; font-weight: 600; margin: 10px 0 8px; letter-spacing: -.01em; }
+  a.card p { font-size: 11px; color: var(--text-muted); line-height: 1.7; }
+  ul.tags { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+  ul.tags li {
+    font-size: 9px; color: var(--text-dim); border: 1px solid var(--panel-border);
+    border-radius: 4px; padding: 3px 7px;
+  }
+
+  footer {
+    margin-top: 44px; padding-top: 20px; border-top: 1px solid var(--panel-border);
+    font-size: 10px; color: var(--text-dim); line-height: 2;
+  }
+  footer code { color: var(--text-muted); }
+</style>
+</head>
+<body>
+<button class="toggle" id="themeToggle">TEMA</button>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">FIAP · FASE 05 · HACKATHON</div>
+    <h1>Conexão Solidária — Mapa de Fluxos</h1>
+    <p class="sub">
+      Sete diagramas cobrindo todo o sistema: da arquitetura em Kubernetes até o ciclo de vida
+      de uma única doação. Cada página é autocontida — tem alternância de tema claro/escuro e
+      exporta PNG, JPEG, WebP ou SVG com um clique. Comece pelo nº 1 para o panorama e siga
+      pelo nº 2, que é o fluxo que define o projeto.
+    </p>
+    <div class="stats">
+      <span class="stat"><b>.NET 10</b> · 8 projetos</span>
+      <span class="stat"><b>4 serviços</b> · Gateway, Identity, Campaigns, Worker</span>
+      <span class="stat"><b>Postgres</b> + Elasticsearch + RabbitMQ</span>
+      <span class="stat"><b>Kubernetes</b> · Kustomize</span>
+      <span class="stat"><b>OTel</b> · Prometheus · Tempo · Grafana · Zabbix</span>
+    </div>
+  </header>
+
+  <div class="grid">
+
+    <a class="card" href="01-arquitetura.html" style="--accent: var(--backend)">
+      <span class="kind">ARCHITECTURE</span>
+      <div class="n">01</div>
+      <h2>Arquitetura Geral</h2>
+      <p>Todos os componentes e como se ligam: usuário → Web → Gateway → APIs → bancos,
+         com o caminho assíncrono descendo para RabbitMQ e Worker e a notificação voltando para a UI.</p>
+      <ul class="tags"><li>YARP</li><li>Blazor Server</li><li>Outbox</li><li>CQRS leve</li><li>k8s</li></ul>
+    </a>
+
+    <a class="card" href="02-doacao-assincrona.html" style="--accent: var(--messagebus)">
+      <span class="kind">SEQUENCE</span>
+      <div class="n">02 · principal</div>
+      <h2>Fluxo Assíncrono da Doação</h2>
+      <p>O fluxo que justifica a arquitetura. Do clique do doador ao <em>202 Accepted</em>,
+         passando por Outbox transacional, publisher confirms, consumo idempotente e as duas
+         rotas de confirmação: SignalR em tempo real e polling de fallback.</p>
+      <ul class="tags"><li>202 Accepted</li><li>Idempotency-Key</li><li>EventId dedup</li><li>SignalR</li></ul>
+    </a>
+
+    <a class="card" href="03-autenticacao-rbac.html" style="--accent: var(--security)">
+      <span class="kind">SEQUENCE</span>
+      <div class="n">03</div>
+      <h2>Autenticação e RBAC</h2>
+      <p>Login por e-mail ou CPF, verificação BCrypt, emissão do JWT HS256 e onde o token
+         é guardado no Blazor. Depois, uma chamada autorizada mostrando que a decisão de
+         acesso mora na API, não no Gateway.</p>
+      <ul class="tags"><li>JWT HS256</li><li>BCrypt</li><li>Policies</li><li>Rate limit</li></ul>
+    </a>
+
+    <a class="card" href="04-resiliencia-mensageria.html" style="--accent: var(--frontend)">
+      <span class="kind">WORKFLOW</span>
+      <div class="n">04</div>
+      <h2>Resiliência da Mensageria</h2>
+      <p>O que acontece quando dá errado. Outbox garante que nada se perde, dedup garante
+         que nada processa duas vezes, retry 10s/60s e dead-letter contêm a falha — e o
+         alerta do Grafana avisa antes do usuário perceber.</p>
+      <ul class="tags"><li>Publisher confirms</li><li>Retry escalonado</li><li>DLQ</li><li>Alertas</li></ul>
+    </a>
+
+    <a class="card" href="05-ciclo-de-vida.html" style="--accent: var(--database)">
+      <span class="kind">LIFECYCLE</span>
+      <div class="n">05</div>
+      <h2>Ciclo de Vida da Doação</h2>
+      <p>Máquina de estados de <code>Pendente</code> a <code>Processada</code>, com as saídas
+         terminais <code>Rejeitada</code> e <code>Falha</code>. Os cards trazem o ciclo de vida
+         paralelo da campanha (Rascunho → Ativa → Concluída/Cancelada).</p>
+      <ul class="tags"><li>DonationStatus</li><li>CampaignStatus</li><li>Transições</li></ul>
+    </a>
+
+    <a class="card" href="06-observabilidade.html" style="--accent: var(--cloud)">
+      <span class="kind">DATAFLOW</span>
+      <div class="n">06</div>
+      <h2>Pipeline de Telemetria</h2>
+      <p>Como a telemetria sai dos serviços e vira alerta: OTLP para o Collector e Tempo,
+         scrape do Prometheus, dashboards no Grafana e o Zabbix como segunda opinião
+         de disponibilidade.</p>
+      <ul class="tags"><li>OpenTelemetry</li><li>Prometheus</li><li>Tempo</li><li>Grafana</li><li>Zabbix</li></ul>
+    </a>
+
+    <a class="card" href="07-assistente-ia.html" style="--accent: var(--external)">
+      <span class="kind">WORKFLOW</span>
+      <div class="n">07</div>
+      <h2>Assistente de IA</h2>
+      <p>Agente sobre <code>Microsoft.Extensions.AI</code> com quatro tools que chamam as APIs
+         reais — o JWT do circuito Blazor flui até o Gateway sem plumbing extra. Sem chave da
+         OpenAI, o app sobe e apenas esconde a feature.</p>
+      <ul class="tags"><li>gpt-4o-mini</li><li>Tool calling</li><li>Structured output</li><li>Degradação</li></ul>
+    </a>
+
+  </div>
+
+  <footer>
+    Gerado com <b>archify</b> a partir do código e de <code>docs/arquitetura.md</code>.<br>
+    Fontes dos diagramas em <code>docs/diagramas/src/*.json</code> — edite o JSON e rode
+    <code>node bin/archify.mjs render &lt;tipo&gt; src/&lt;arquivo&gt;.json &lt;saida&gt;.html</code> para regerar.
+  </footer>
+</div>
+
+<script>
+  var btn = document.getElementById('themeToggle');
+  btn.addEventListener('click', function () {
+    var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('archify-theme', next); } catch (_) {}
+  });
+</script>
+</body>
+</html>

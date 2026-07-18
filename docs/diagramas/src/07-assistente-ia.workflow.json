@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Assistente de IA",
+    "subtitle": "Agente com tools sobre Microsoft.Extensions.AI - o JWT do circuito flui ate a API"
+  },
+  "lanes": [
+    { "id": "user", "label": "Usuario" },
+    { "id": "web", "label": "Web (Blazor Server)" },
+    { "id": "llm", "label": "OpenAI gpt-4o-mini" },
+    { "id": "tools", "label": "Tools do agente" },
+    { "id": "api", "label": "Backend via Gateway" },
+    { "id": "exceptions", "label": "Degradacao graciosa", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "entrada", "label": "Pergunta", "fromCol": 0, "toCol": 1 },
+    { "id": "raciocinio", "label": "Raciocinio + tool call", "fromCol": 2, "toCol": 4, "variant": "emphasis" },
+    { "id": "resposta", "label": "Dados reais", "fromCol": 5, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["pergunta", "chat", "agente", "tools", "gw"],
+  "nodes": [
+    { "id": "pergunta", "lane": "user", "col": 0, "type": "external", "label": "Pergunta", "sublabel": "linguagem natural" },
+    { "id": "chat", "lane": "web", "col": 1, "type": "frontend", "label": "AssistantChat", "sublabel": "AgentSession" },
+    { "id": "ui", "lane": "web", "col": 5, "type": "frontend", "label": "UI", "sublabel": "texto em chunks" },
+    { "id": "agente", "lane": "llm", "col": 3, "type": "cloud", "label": "AIAgent", "sublabel": "streaming" },
+    { "id": "tools", "lane": "tools", "col": 4, "type": "messagebus", "label": "4 tools", "sublabel": "AIFunctionFactory" },
+    { "id": "gw", "lane": "api", "col": 5, "type": "security", "label": "Gateway", "sublabel": "Bearer do circuito" },
+    { "id": "semchave", "lane": "exceptions", "col": 1, "type": "security", "label": "IA off", "sublabel": "sem API key" },
+    { "id": "semlogin", "lane": "exceptions", "col": 4, "type": "security", "label": "Sem login", "sublabel": "pede /entrar" }
+  ],
+  "edges": [
+    { "from": "pergunta", "to": "chat", "variant": "default" },
+    { "from": "chat", "to": "agente", "label": "prompt + historico", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 },
+    { "from": "agente", "to": "tools", "label": "tool call", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 },
+    { "from": "tools", "to": "gw", "label": "GET /api/campanhas", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 },
+    { "from": "agente", "to": "ui", "label": "resposta em streaming", "variant": "emphasis", "role": "return", "fromSide": "right", "toSide": "bottom", "route": "up-channel", "labelSegment": 1 },
+    { "from": "chat", "to": "semchave", "label": "feature escondida", "variant": "security", "role": "error", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 },
+    { "from": "tools", "to": "semlogin", "label": "MinhasDoacoes", "variant": "security", "role": "error", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "As 4 tools expostas",
+      "items": [
+        "BuscarCampanhas -> GET /api/campanhas/search",
+        "ObterCampanha -> GET /api/campanhas/{id}",
+        "ObterEstatisticas -> /stats com fallback /transparencia",
+        "MinhasDoacoes -> GET /api/doacoes/minhas (exige login)"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Por que nao alucina",
+      "items": [
+        "Toda resposta com dado vem de tool, nunca do modelo",
+        "Tools retornam JSON compacto (economia de tokens)",
+        "System prompt restringe o escopo a campanhas e doacoes",
+        "Sem token, a tool orienta login em vez de chamar a API"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Rascunho de campanha (gestor)",
+      "items": [
+        "CampaignDraftService - agente separado, SEM tools",
+        "Structured output tipado: CampaignDraftSuggestion",
+        "Normalizar() trunca, arredonda e casa a categoria (puro e testavel)",
+        "O POST /api/campanhas final e acao do gestor, nao da IA"
+      ]
+    }
+  ]
+}
