@@ -1,0 +1,35 @@
+# =============================================================================
+# PVC do key ring do Data Protection (Blazor Server / ProtectedLocalStorage).
+#
+# DELIBERADAMENTE FORA de base/kustomization.yaml: se este PVC entrasse no
+# overlay, o `kubectl delete -k` do down.ps1 o apagaria a CADA ciclo down/up,
+# mesmo sem -PurgeData. Isso gerava um key ring novo a cada subida, e todo
+# `cs_access_token` ja gravado no localStorage do browser virava indecifravel
+# (CryptographicException no Unprotect ao reconectar o circuito).
+#
+# Ciclo de vida:
+#   up.ps1                -> aplica este arquivo (kubectl apply -f, idempotente)
+#   down.ps1              -> NAO remove (fora do overlay)
+#   down.ps1 -PurgeData   -> remove junto com os demais PVCs do namespace
+#
+# O Deployment web (base/web.yaml) referencia este claim por nome; sem ele
+# aplicado, o pod fica Pending aguardando o volume.
+# =============================================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: web-dataprotection-keys
+  namespace: conexao-solidaria
+  labels:
+    app: web
+    app.kubernetes.io/component: web
+spec:
+  # Key ring do Data Protection que cifra o JWT no ProtectedLocalStorage do browser.
+  # PRECISA sobreviver ao restart do pod: com emptyDir, cada recriacao gerava um key
+  # ring novo e todo token ja emitido virava indecifravel (CryptographicException no
+  # Unprotect ao reconectar o circuito Blazor).
+  # RWO basta enquanto replicas: 1. Para escalar o Web, troque por RWX + sticky sessions.
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 128Mi

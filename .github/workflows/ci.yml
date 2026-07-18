@@ -189,7 +189,10 @@ jobs:
           kubeconform -strict -summary -ignore-missing-schemas rendered.yaml
 
   # ---------------------------------------------------------------------------
-  # 5) PUBLISH: rebuild + push das 5 imagens para o GHCR (apenas em main)
+  # 5) PUBLISH: rebuild + push das 5 imagens (apenas em main)
+  #    Destinos: GHCR (historico por SHA + latest) e Docker Hub (junonn5/*:latest,
+  #    que e o que o cluster local consome e o Keel observa). Requer o secret
+  #    DOCKERHUB_TOKEN no repositorio; sem ele, publica so no GHCR com um warning.
   # ---------------------------------------------------------------------------
   publish:
     name: Publish to GHCR (${{ matrix.service }})
@@ -229,14 +232,55 @@ jobs:
         id: owner
         run: echo "value=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
 
+      # O cluster local NAO consome o GHCR: o overlay infra/k8s/overlays/local
+      # remapeia as imagens para o Docker Hub (junonn5/conexao-solidaria-*:latest),
+      # e e essa tag que o Keel observa para recriar os pods. Sem este push, um
+      # commit em main publicava so no GHCR e o cluster seguia na imagem antiga.
+      # O secret e OPCIONAL: ausente, o job publica apenas no GHCR em vez de falhar.
+      - name: Check Docker Hub credentials
+        id: dockerhub
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -n "$DOCKERHUB_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::DOCKERHUB_TOKEN ausente: publicando apenas no GHCR. O cluster local (overlay -> Docker Hub) NAO sera atualizado."
+          fi
+
+      - name: Login to Docker Hub
+        if: steps.dockerhub.outputs.enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USER || 'junonn5' }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # GHCR sempre (SHA para rastreabilidade + latest); Docker Hub so quando ha token.
+      - name: Compute tags
+        id: tags
+        env:
+          DOCKERHUB_USER: ${{ vars.DOCKERHUB_USER || 'junonn5' }}
+          DOCKERHUB_ENABLED: ${{ steps.dockerhub.outputs.enabled }}
+          OWNER: ${{ steps.owner.outputs.value }}
+          SERVICE: ${{ matrix.service }}
+        run: |
+          {
+            echo "value<<TAGS_EOF"
+            echo "ghcr.io/${OWNER}/conexao-solidaria-${SERVICE}:${GITHUB_SHA}"
+            echo "ghcr.io/${OWNER}/conexao-solidaria-${SERVICE}:latest"
+            if [ "$DOCKERHUB_ENABLED" = "true" ]; then
+              echo "${DOCKERHUB_USER}/conexao-solidaria-${SERVICE}:latest"
+            fi
+            echo "TAGS_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build & push (SHA + latest)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ matrix.dockerfile }}
           push: true
-          tags: |
-            ghcr.io/${{ steps.owner.outputs.value }}/conexao-solidaria-${{ matrix.service }}:${{ github.sha }}
-            ghcr.io/${{ steps.owner.outputs.value }}/conexao-solidaria-${{ matrix.service }}:latest
+          tags: ${{ steps.tags.outputs.value }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}

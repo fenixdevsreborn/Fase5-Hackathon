@@ -31,3 +31,8 @@ resources:
 
 # NOTA: o Secret "conexao-solidaria-secret" NAO e versionado (sem segredos no Git).
 # Aplique-o antes do apply da base, a partir de infra/k8s/secret.example.yaml.
+
+# NOTA: base/web-dataprotection-pvc.yaml esta FORA desta lista de proposito.
+# Dentro do overlay, o `kubectl delete -k` do down.ps1 apagaria o key ring do
+# Data Protection a cada ciclo down/up, invalidando os JWTs ja gravados no
+# localStorage dos browsers. O up.ps1 aplica esse PVC separadamente.

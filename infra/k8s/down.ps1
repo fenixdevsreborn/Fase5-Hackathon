@@ -6,7 +6,11 @@
 #   pwsh infra/k8s/down.ps1 -PurgeData   # tambem apaga PVCs e o namespace (perde dados)
 #
 # Por padrao, os PVCs de Postgres/RabbitMQ (volumeClaimTemplates) NAO sao
-# removidos - proposital, para nao perder dados por engano.
+# removidos - proposital, para nao perder dados por engano. O mesmo vale para o
+# PVC 'web-dataprotection-keys': ele fica fora do overlay (ver
+# base/web-dataprotection-pvc.yaml), entao o `delete -k` abaixo nao o alcanca e
+# os JWTs no localStorage dos browsers continuam validos apos o proximo up.
+# Só o -PurgeData apaga todos eles.
 # =============================================================================
 [CmdletBinding()]
 param(
@@ -42,6 +46,7 @@ if ($PurgeData) {
     kubectl delete namespace $ns --ignore-not-found
 }
 else {
-    Write-Host "PVCs de Postgres/RabbitMQ preservados. Para apagar tudo:" -ForegroundColor DarkGray
+    Write-Host "PVCs preservados (Postgres/RabbitMQ + Data Protection keys do Web)." -ForegroundColor DarkGray
+    Write-Host "Para apagar tudo:" -ForegroundColor DarkGray
     Write-Host "  pwsh infra/k8s/down.ps1 -PurgeData" -ForegroundColor DarkGray
 }

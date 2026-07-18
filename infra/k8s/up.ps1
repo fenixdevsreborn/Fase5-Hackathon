@@ -10,7 +10,8 @@
 # Faz, em ordem (fluxo validado ao vivo - ver ReadmeKubernetes.md):
 #   1. seleciona o contexto docker-desktop
 #   2. (opcional, -Publish) build + push das 5 imagens para o Docker Hub
-#   3. cria o namespace e o Secret 'conexao-solidaria-secret' a partir do .env
+#   3. cria o namespace, o PVC das Data Protection keys e o Secret
+#      'conexao-solidaria-secret' a partir do .env
 #   4. instala o Keel (auto-update das imagens)
 #   5. kubectl apply -k (postgres, rabbitmq, es, Jobs de migracao, deployments)
 #   6. espera StatefulSets + Jobs de migracao e reinicia as APIs (evita CrashLoop)
@@ -81,6 +82,14 @@ else {
 # --- 3) Namespace + Secret (gerado do .env) ---------------------------------
 Write-Step "Aplicando o namespace..."
 kubectl apply -f (Join-Path $scriptDir "base/namespace.yaml") | Out-Null
+
+# PVC do key ring do Data Protection: aplicado A PARTE, fora do overlay, para que o
+# `kubectl delete -k` do down.ps1 nao o remova a cada ciclo (sem isso, todo down/up
+# gerava chaves novas e invalidava os JWTs ja gravados no localStorage dos browsers).
+# Idempotente: se ja existe, o apply nao altera nada.
+Write-Step "Aplicando o PVC das Data Protection keys (preservado entre ciclos)..."
+kubectl apply -f (Join-Path $scriptDir "base/web-dataprotection-pvc.yaml") | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "falha ao aplicar o PVC web-dataprotection-keys" }
 
 $envPath = Join-Path $repoRoot ".env"
 if (-not (Test-Path $envPath)) {

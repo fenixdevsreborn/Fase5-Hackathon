@@ -1,21 +1,7 @@
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: web-dataprotection-keys
-  labels:
-    app: web
-    app.kubernetes.io/component: web
-spec:
-  # Key ring do Data Protection que cifra o JWT no ProtectedLocalStorage do browser.
-  # PRECISA sobreviver ao restart do pod: com emptyDir, cada recriacao gerava um key
-  # ring novo e todo token ja emitido virava indecifravel (CryptographicException no
-  # Unprotect ao reconectar o circuito Blazor).
-  # RWO basta enquanto replicas: 1. Para escalar o Web, troque por RWX + sticky sessions.
-  accessModes: ["ReadWriteOnce"]
-  resources:
-    requests:
-      storage: 128Mi
----
+# NOTA: o PVC 'web-dataprotection-keys' referenciado abaixo vive em
+# base/web-dataprotection-pvc.yaml, FORA do kustomization — assim o
+# `kubectl delete -k` do down.ps1 nao apaga o key ring a cada ciclo.
+# O up.ps1 o aplica separadamente (ver o cabecalho daquele arquivo).
 apiVersion: apps/v1
 kind: Deployment
 metadata:

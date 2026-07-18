@@ -18,6 +18,7 @@ infra/k8s/
     donations-worker.yaml
     gateway.yaml             # YARP (ponto de entrada das APIs)
     web.yaml                 # Blazor Server
+    web-dataprotection-pvc.yaml # PVC do key ring (FORA do kustomization - ver abaixo)
     observability.yaml       # Prometheus + Grafana
     zabbix.yaml              # zabbix-server + zabbix-web
     ingress.yaml             # nginx: /api -> gateway, / -> web
@@ -78,6 +79,28 @@ pwsh infra/k8s/down.ps1 -PurgeData # derruba e apaga PVCs + namespace
 Pre-requisitos: Kubernetes habilitado no Docker Desktop, `kubectl` no PATH, `.env`
 preenchido na raiz (ver `.env.example`), imagens ja publicadas no Docker Hub (ou use
 `-Publish`) e Docker Compose parado (`docker compose down`).
+
+## Como uma alteracao de codigo chega ao cluster
+
+O overlay `local` remapeia as imagens para o **Docker Hub**
+(`junonn5/conexao-solidaria-*:latest`) e o Keel observa essas tags. Logo, so um push
+para o Docker Hub recria os pods. Dois caminhos publicam la:
+
+| Caminho | Efeito |
+| --- | --- |
+| `git push` para `main` | O job `publish` do CI publica no GHCR **e** no Docker Hub (requer o secret `DOCKERHUB_TOKEN` no repositorio; sem ele, so o GHCR e o cluster nao atualiza) |
+| `pwsh infra/k8s/push-dockerhub.ps1` | Publica direto do seu Docker, sem passar pelo CI |
+
+O GHCR guarda o historico por SHA; o Docker Hub e o que o cluster consome.
+
+## Data Protection keys (`web-dataprotection-pvc.yaml`)
+
+O PVC `web-dataprotection-keys` fica **fora** de `base/kustomization.yaml` de
+proposito. Dentro do overlay, o `kubectl delete -k` do `down.ps1` o apagaria a cada
+ciclo down/up: o key ring novo tornava indecifravel todo `cs_access_token` ja gravado
+no `localStorage` dos browsers, e o `Unprotect` derrubava o circuito Blazor com
+`CryptographicException`. O `up.ps1` aplica esse arquivo separadamente (idempotente);
+so `down.ps1 -PurgeData` o remove.
 
 ## Passo a passo manual (Docker Desktop)
 
