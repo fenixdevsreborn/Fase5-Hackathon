@@ -242,6 +242,9 @@ html.cine-over-stage .cs-site-header .cs-nav-link {
     pointer-events: none;
 }
 
+/* Coluna de conteudo padrao das telas internas: mesma grade do Portal de Transparencia (.cs-tp). */
+.cs-page-shell { width: min(100%, 900px); margin: 0 auto; }
+
 /* Variante sem cartao: mantem o cabecalho, remove superficie, moldura e ornamentos.
    Seletor duplicado de proposito: precisa vencer a regra mobile de .cs-page-header, declarada adiante. */
 .cs-page-header.cs-page-header--plain {

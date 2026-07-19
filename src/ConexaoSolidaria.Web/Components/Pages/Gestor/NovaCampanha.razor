@@ -13,12 +13,9 @@
 
 <AuthorizeView Roles="GestorONG">
     <Authorized>
-        <header class="cs-page-header">
+      <div class="cs-page-shell">
+        <header class="cs-page-header cs-page-header--plain">
             <div class="cs-page-header__content">
-                <span class="cs-page-header__badge">
-                    <MudIcon Icon="@Icons.Material.Filled.Campaign" Size="Size.Small" />
-                    Nova causa
-                </span>
                 <h1 class="cs-page-header__title">Nova <span>Campanha</span></h1>
                 <p class="cs-page-header__lead">
                     Monte quantas campanhas quiser e salve todas de uma vez. Você pode preencher à mão,
@@ -145,7 +142,7 @@
             <aside class="nova-campanha__side">
                 @if (Rascunho.Enabled)
                 {
-                    <div class="nova-campanha__ai">
+                    <div class="nova-campanha__ai @(Modo == "ia" ? "nova-campanha__ai--foco" : "")">
                         <div class="nova-campanha__ai-head">
                             <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" />
                             <div>
@@ -200,7 +197,7 @@
                     </div>
                 }
 
-                <div class="nova-campanha__ai nova-campanha__ai--import">
+                <div class="nova-campanha__ai nova-campanha__ai--import @(Modo == "planilha" ? "nova-campanha__ai--foco" : "")">
                     <div class="nova-campanha__ai-head">
                         <MudIcon Icon="@Icons.Material.Filled.TableChart" />
                         <div>
@@ -273,6 +270,7 @@
                 </div>
             </aside>
         </div>
+      </div>
     </Authorized>
     <NotAuthorized>
         <section class="cs-access-state"><div>
@@ -285,6 +283,10 @@
 
 @code {
     private static readonly CultureInfo Br = CultureInfo.GetCultureInfo("pt-BR");
+
+    /// <summary>Modo escolhido no modal de criação: "manual", "ia" ou "planilha". Apenas destaca o painel correspondente.</summary>
+    [SupplyParameterFromQuery]
+    public string? Modo { get; set; }
 
     /// <summary>
     /// Campanha aguardando salvamento. O Id local existe só para dar @key estável à lista

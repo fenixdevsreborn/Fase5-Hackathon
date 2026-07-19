@@ -21,7 +21,7 @@
     { "id": "dup", "type": "waiting", "label": "Descartada", "sublabel": "EventId ja visto", "lane": "eventos", "col": 0, "tag": "idempotencia" },
     { "id": "retry", "type": "waiting", "label": "Retry", "sublabel": "10s -> 60s", "lane": "eventos", "col": 1, "tag": "requeue" },
 
-    { "id": "rejeitada", "type": "failure", "label": "Rejeitada", "sublabel": "campanha encerrada", "lane": "terminal", "col": 0 },
+    { "id": "rejeitada", "type": "failure", "label": "Rejeitada", "sublabel": "campanha ausente/encerrada", "lane": "terminal", "col": 0, "tag": "Worker" },
     { "id": "falha", "type": "failure", "label": "Falha", "sublabel": "dead-letter", "lane": "terminal", "col": 1 },
     { "id": "processada", "type": "success", "label": "Processada", "sublabel": "comprovante emitido", "lane": "terminal", "col": 2 }
   ],
@@ -34,7 +34,7 @@
     { "from": "consumida", "to": "retry", "label": "erro", "variant": "security", "fromSide": "bottom", "toSide": "top" },
     { "from": "retry", "to": "falha", "label": "esgotou", "variant": "security", "fromSide": "bottom", "toSide": "top" },
     { "from": "consumida", "to": "dup", "label": "duplicado", "variant": "dashed", "fromSide": "left", "toSide": "top", "route": "drop", "channelY": 250 },
-    { "from": "criada", "to": "rejeitada", "label": "422 na criacao", "variant": "security", "fromSide": "bottom", "toSide": "left", "route": "drop", "channelY": 408 }
+    { "from": "consumida", "to": "rejeitada", "label": "campanha invalida", "variant": "security", "fromSide": "bottom", "toSide": "top", "route": "drop", "channelY": 408 }
   ],
   "cards": [
     {

@@ -253,19 +253,23 @@ Sequência em canvas (não `video.currentTime`, instável no Safari/iOS).
 # ~31s de clipes na taxa NATIVA de 24 fps -> 744 quadros (acima de 24 o ffmpeg só
 # duplica quadros). Numeração GLOBAL contínua (144/168/144/144/144 por clipe):
 # -start_number = 1, 145, 313, 457, 601.
-ffmpeg -i clipe-1.mp4 -vf "scale=1280:-2" -frames:v 144 -c:v libwebp -quality 50 -compression_level 6 -preset photo -start_number 1 desktop/frame-%04d.webp
-ffmpeg -i clipe-1.mp4 -vf "scale=640:-2"  -frames:v 144 -c:v libwebp -quality 48 -compression_level 6 -preset photo -start_number 1 mobile/frame-%04d.webp
+ffmpeg -i clipe-1.mp4 -frames:v 144 -c:v libaom-av1 -still-picture 1 -crf 40 -b:v 0 -cpu-used 8 -row-mt 1 -f image2 -start_number 1 desktop/frame-%04d.avif
+ffmpeg -i clipe-1.mp4 -vf "scale=640:-2" -frames:v 144 -c:v libaom-av1 -still-picture 1 -crf 38 -b:v 0 -cpu-used 8 -row-mt 1 -f image2 -start_number 1 mobile/frame-%04d.avif
 ```
+
+AVIF (AV1 still) rende ~60–65% menos bytes que WebP na mesma qualidade visual; o `-f image2`
+é obrigatório, senão o ffmpeg junta tudo num único AVIF animado. Decodifica em qualquer
+browser moderno (Chrome 85+, Firefox 93+, Safari 16.4+) via `createImageBitmap`.
 
 | Alvo | Largura | Por quadro | Total (744) |
 | --- | --- | --- | --- |
-| Desktop | 1280 px q50 | ~24 KB | **~17,3 MB** |
-| Mobile | 640 px q48 | ~10 KB | **~7,0 MB** |
+| Desktop | 1920 px crf40 (nativo) | ~15 KB | **~10,7 MB** |
+| Mobile | 640 px crf38 | ~5 KB | **~3,5 MB** |
 
 **Carregamento progressivo obrigatório:** o segmento do clipe 1 (144 quadros) bloqueia a
 revelação da hero; o resto carrega em background. Só os blobs comprimidos ficam todos em
-memória — a decodificação em ImageBitmap acontece numa janela de ±24 quadros ao redor do
-quadro atual (`cinematic.js`), senão os 744 bitmaps somariam ~2,7 GB. Destino: `wwwroot/cinematic/{desktop,mobile}/`,
+memória — a decodificação em ImageBitmap acontece numa janela de ±16 quadros ao redor do
+quadro atual (`cinematic.js`), senão os 744 bitmaps 1080p somariam ~6,2 GB. Destino: `wwwroot/cinematic/{desktop,mobile}/`,
 servido **sem fingerprint** (os quadros são carregados por JS, fora do `@Assets[...]`).
 MP4 fonte em `assets/cinematic/source/` (fora de `wwwroot`).
 
@@ -276,8 +280,10 @@ MP4 fonte em `assets/cinematic/source/` (fora de `wwwroot`).
 O brief original pressupunha HTML estático; aqui há circuito SignalR, diff de DOM do servidor
 e navegação enhanced.
 
-- **Bibliotecas locais** em `wwwroot/lib/` (GSAP + ScrollTrigger + Lenis), padrão do Bootstrap
+- **Bibliotecas locais** em `wwwroot/lib/` (GSAP + ScrollTrigger), padrão do Bootstrap
   já existente. O k8s roda `readOnlyRootFilesystem` + NetworkPolicy default-deny — sem CDN.
+  O Lenis foi **removido** (decisão do usuário): scroll nativo, `scrub: true` — nenhuma
+  suavização ou atraso artificial na rolagem.
 - **`cinematic.js`** módulo ES com `init(canvasRef)` / `destroy()`; interop via
   `IJSObjectReference` em `OnAfterRenderAsync(firstRender)` + `DisposeAsync`. O `destroy`
   mata todos os ScrollTriggers (`ScrollTrigger.getAll().forEach(t => t.kill())`), para o RAF
@@ -294,8 +300,8 @@ e navegação enhanced.
 
 | Condição | Comportamento |
 | --- | --- |
-| Desktop ≥ 1024px | Sequência completa 1440px, Lenis ativo |
-| Tablet / mobile | Sequência 720px, menos quadros, Lenis com `duration` menor |
+| Desktop ≥ 1024px | Sequência completa 1920px (AVIF), scroll nativo |
+| Tablet / mobile | Sequência 640px (AVIF), scroll nativo |
 | `prefers-reduced-motion` | **Sem canvas/pin.** Imagem estática por seção — contrato já em `brand.css:94-103` e `474-478`; a logo aparece estática, sem dissolução |
 | Conexão lenta / falha | Poster estático + conteúdo HTML normal; a landing nunca depende da mídia |
 | Sem JS | Conteúdo e CTAs íntegros |

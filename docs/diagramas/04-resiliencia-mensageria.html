@@ -527,12 +527,12 @@
         <div class="pulse-dot"></div>
         <h1>Resiliencia da Mensageria</h1>
       </div>
-      <p class="subtitle">Outbox transacional, publisher confirms, retry escalonado, DLQ e alertas</p>
+      <p class="subtitle">Outbox transacional, publisher confirms, retry escalonado, DLQ e paineis de observabilidade</p>
     </div>
 
     <!-- Main Diagram -->
     <div class="diagram-container">
-      <svg viewBox="0 0 720 776" role="img" aria-label="Resiliencia da Mensageria — Outbox transacional, publisher confirms, retry escalonado, DLQ e alertas (workflow diagram)">
+      <svg viewBox="0 0 720 776" role="img" aria-label="Resiliencia da Mensageria — Outbox transacional, publisher confirms, retry escalonado, DLQ e paineis de observabilidade (workflow diagram)">
         <!-- Definitions -->
         <defs>
           <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -640,8 +640,8 @@
 
         <rect x="579" y="589" width="92" height="52" rx="6" class="c-mask"/>
         <rect x="579" y="589" width="92" height="52" rx="6" class="c-cloud" stroke-width="1.5"/>
-        <text x="625" y="610" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Alerta</text>
-        <text x="625" y="627" class="t-muted" font-size="8" text-anchor="middle">Grafana</text>
+        <text x="625" y="610" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Painel</text>
+        <text x="625" y="627" class="t-muted" font-size="8" text-anchor="middle">Grafana DLQ</text>
 
         <!-- Edge labels -->
 
@@ -709,8 +709,8 @@
         </div>
         <ul>
           <li>&bull; doacoes.retry.10s -&gt; doacoes.retry.60s -&gt; doacoes.dead-letter</li>
-          <li>&bull; Alertas Grafana: DLQ &gt; 0 e Outbox &gt; 20 por 2 min</li>
-          <li>&bull; Metricas conexao_dead_letter_messages e publish_failures_total</li>
+          <li>&bull; Paineis Grafana vigiam DLQ e Outbox pendente (limiares visuais, sem alerta provisionado)</li>
+          <li>&bull; Metricas conexao_dead_letter_messages e conexao_donation_publish_failures_total</li>
           <li>&bull; Fila e consumidores visiveis via plugin prometheus (:15692)</li>
         </ul>
       </div>

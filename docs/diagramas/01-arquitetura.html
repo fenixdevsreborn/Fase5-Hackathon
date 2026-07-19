@@ -716,8 +716,8 @@
         </div>
         <ul>
           <li>&bull; Migrations em Jobs dedicados (RunOnStartup=false nos pods)</li>
-          <li>&bull; OTel -&gt; Collector -&gt; Tempo (traces) e Prometheus/Grafana</li>
-          <li>&bull; Alertas: DLQ &gt; 0, Outbox &gt; 20 por 2 min, 5xx</li>
+          <li>&bull; /metrics -&gt; Prometheus (5 alvos) -&gt; Grafana (4 dashboards)</li>
+          <li>&bull; Paineis de DLQ, Outbox pendente e 5xx; Zabbix p/ disponibilidade</li>
           <li>&bull; /health e /alive expostos por todos os servicos</li>
         </ul>
       </div>

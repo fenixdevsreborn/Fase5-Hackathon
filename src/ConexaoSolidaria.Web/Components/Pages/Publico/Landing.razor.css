@@ -1098,11 +1098,11 @@
     box-shadow: inset 0 0 0 100vmax rgba(7, 27, 63, .62);
 }
 
-.cine-wrap:not(.is-live) .cine-o1 { background-image: url('cinematic/desktop/frame-0001.webp'); min-height: 92vh; }
-.cine-wrap:not(.is-live) .cine-o2 { background-image: url('cinematic/desktop/frame-0095.webp'); }
-.cine-wrap:not(.is-live) .cine-o3 { background-image: url('cinematic/desktop/frame-0140.webp'); }
-.cine-wrap:not(.is-live) .cine-o4 { background-image: url('cinematic/desktop/frame-0230.webp'); }
-.cine-wrap:not(.is-live) .cine-o5 { background-image: url('cinematic/desktop/frame-0305.webp'); }
+.cine-wrap:not(.is-live) .cine-o1 { background-image: url('cinematic/desktop/frame-0001.avif'); min-height: 92vh; }
+.cine-wrap:not(.is-live) .cine-o2 { background-image: url('cinematic/desktop/frame-0095.avif'); }
+.cine-wrap:not(.is-live) .cine-o3 { background-image: url('cinematic/desktop/frame-0140.avif'); }
+.cine-wrap:not(.is-live) .cine-o4 { background-image: url('cinematic/desktop/frame-0230.avif'); }
+.cine-wrap:not(.is-live) .cine-o5 { background-image: url('cinematic/desktop/frame-0305.avif'); }
 
 /* ---- Modo cinematográfico ---- */
 /* 760vh para 620 quadros: ~11px de rolagem por quadro numa tela de 900px. Menos que isso

@@ -1,20 +1,22 @@
 // Landing cinematográfica "O Laço" — sequência de quadros no canvas dirigida pelo scroll.
 // Módulo ES carregado sob demanda pela Landing (OnAfterRenderAsync) e destruído no Dispose.
-// GSAP/ScrollTrigger/Lenis vêm de arquivos locais em lib/. Com prefers-reduced-motion o
+// GSAP/ScrollTrigger vêm de arquivos locais em lib/. Com prefers-reduced-motion o
 // módulo nem inicializa (fallback CSS estático).
 //
 // Decisões de performance (o que fazia a cena travar/pular):
 //  - ImageBitmap via createImageBitmap(): decodifica FORA da main thread. Com <img> o
 //    decode acontecia no primeiro drawImage, travando o scroll.
 //  - JANELA de decodificação: só a vizinhança do quadro atual vive como ImageBitmap;
-//    o resto fica como blob comprimido (~24 KB). Manter os 744 bitmaps decodificados
-//    custaria ~2,7 GB (1280×720×4 bytes cada) — era o que degradava o scroll assim
-//    que o carregamento em background terminava.
+//    o resto fica como blob comprimido (AVIF ~16 KB — AV1 rende ~60% menos bytes que
+//    WebP na mesma qualidade). Manter os 744 bitmaps decodificados custaria ~6,2 GB
+//    (1920×1080×4 bytes cada) — era o que degradava o scroll assim que o
+//    carregamento em background terminava.
 //  - Canvas limitado à resolução nativa dos quadros: acima disso o drawImage só paga
 //    upscale mais caro sem ganhar nitidez (o compositor estica o resto via CSS).
 //  - Desenho num loop de rAF, só quando o índice muda — o onUpdate do ScrollTrigger
 //    dispara muito mais vezes que a taxa de quadros útil.
-//  - Lenis com `lerp` (resposta proporcional) em vez de `duration` (que arrastava).
+//  - Scroll NATIVO: Lenis removido e scrub direto (true), a pedido do usuário — a página
+//    rola sem nenhuma suavização ou atraso artificial.
 
 // 24 fps = taxa nativa dos MP4 fonte: todo quadro único do vídeo entra na sequência.
 // Acima disso o ffmpeg só duplicaria quadros — mesma imagem, mais peso.
@@ -40,9 +42,8 @@ async function ensureLibs() {
     if (loadedLibs) return loadedLibs;
     if (!window.gsap) await loadScript('lib/gsap/gsap.min.js');
     if (!window.ScrollTrigger) await loadScript('lib/gsap/ScrollTrigger.min.js');
-    if (!window.Lenis) await loadScript('lib/lenis/lenis.min.js');
     window.gsap.registerPlugin(window.ScrollTrigger);
-    loadedLibs = { gsap: window.gsap, ScrollTrigger: window.ScrollTrigger, Lenis: window.Lenis };
+    loadedLibs = { gsap: window.gsap, ScrollTrigger: window.ScrollTrigger };
     return loadedLibs;
 }
 
@@ -76,7 +77,7 @@ export async function init(stageId) {
     if (!stage) return null;
     const wrap = stage.parentElement;
 
-    const { gsap, ScrollTrigger, Lenis } = await ensureLibs();
+    const { gsap, ScrollTrigger } = await ensureLibs();
     wrap.classList.add('is-live');                       // layout cinematográfico (CSS)
     document.documentElement.classList.add('cine-page'); // header transparente sobre a cena
 
@@ -94,14 +95,17 @@ export async function init(stageId) {
     const blobs = new Array(TOTAL_FRAMES).fill(null);
     const frames = new Array(TOTAL_FRAMES).fill(null);
     const decoding = new Set();
-    // ±24 quadros = ±1 s de cena decodificada (~180 MB no pior caso, desktop).
-    const WINDOW = 24;
+    const fetching = new Set();
+    // ±16 quadros = ±0,7 s de cena decodificada. Um bitmap 1920×1080 ocupa 8,3 MB,
+    // então a janela custa ~270 MB no pior caso (desktop); no mobile (640px), ~30 MB.
+    const WINDOW = 16;
     let disposed = false;
 
     async function loadFrame(i) {
-        if (disposed || blobs[i]) return;
+        if (disposed || blobs[i] || fetching.has(i)) return;
+        fetching.add(i);
         try {
-            const url = `cinematic/${dir}/frame-${String(i + 1).padStart(4, '0')}.webp`;
+            const url = `cinematic/${dir}/frame-${String(i + 1).padStart(4, '0')}.avif`;
             const res = await fetch(url);
             if (!res.ok) return;
             const blob = await res.blob();
@@ -109,6 +113,7 @@ export async function init(stageId) {
             blobs[i] = blob;
             if (Math.abs(i - currentIndex()) <= WINDOW) void decodeFrame(i);
         } catch { /* quadro faltando não trava a cena */ }
+        finally { fetching.delete(i); }
     }
 
     async function decodeFrame(i) {
@@ -116,20 +121,28 @@ export async function init(stageId) {
         decoding.add(i);
         try {
             const bmp = await createImageBitmap(blobs[i]);
-            // Num scrub rápido a janela pode ter passado longe enquanto decodificava.
-            if (disposed || Math.abs(i - currentIndex()) > WINDOW * 2) { bmp.close?.(); return; }
+            if (disposed) { bmp.close?.(); return; }
+            // Mesmo que o scroll já tenha passado, guarda: o nearestReady usa e a
+            // evicção do syncWindow fecha depois — descartar aqui congelava o canvas
+            // em scroll rápido (todo decode chegava "tarde" e nada novo era pintado).
             frames[i] = bmp;
         } catch { /* decode falhou: o nearestReady cobre com o vizinho */ }
         finally { decoding.delete(i); }
     }
 
     // Decodifica a vizinhança do quadro atual e devolve o resto ao estado de blob.
+    // Quadro da janela ainda sem blob é buscado NA HORA (fura a fila sequencial do
+    // background) — senão um scroll mais rápido que o download congela o canvas, e
+    // âncoras (#sobre etc.) esperariam a fila inteira em conexão lenta.
     let lastCenter = -1;
     function syncWindow(center) {
         if (lastCenter >= 0 && Math.abs(center - lastCenter) < 4) return;
         lastCenter = center;
         for (let i = 0; i < TOTAL_FRAMES; i++) {
-            if (Math.abs(i - center) <= WINDOW) void decodeFrame(i);
+            if (Math.abs(i - center) <= WINDOW) {
+                if (blobs[i]) void decodeFrame(i);
+                else void loadFrame(i);
+            }
             else if (frames[i]) { frames[i].close?.(); frames[i] = null; }
         }
     }
@@ -156,7 +169,7 @@ export async function init(stageId) {
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         // Teto = largura nativa dos quadros: um backing store maior só encarece cada
         // drawImage (telas 2K/4K chegavam a 4× mais pixels que a fonte tem).
-        const maxW = dir === 'desktop' ? 1280 : 640;
+        const maxW = dir === 'desktop' ? 1920 : 640;
         const fit = Math.min(1, maxW / Math.max(1, canvas.clientWidth * dpr));
         canvas.width = Math.round(canvas.clientWidth * dpr * fit);
         canvas.height = Math.round(canvas.clientHeight * dpr * fit);
@@ -188,34 +201,16 @@ export async function init(stageId) {
     window.addEventListener('resize', resize);
     resize();
 
-    // ---- ScrollTrigger com Lenis e Inércia Suave (scrub: 0.8) -----------------------
-    let lenis = null;
-    if (Lenis) {
-        try {
-            lenis = new Lenis({
-                lerp: 0.08,
-                smoothWheel: true,
-                syncTouch: true
-            });
-            lenis.on('scroll', ScrollTrigger.update);
-            function lenisRaf(time) {
-                if (!disposed && lenis) {
-                    lenis.raf(time);
-                    requestAnimationFrame(lenisRaf);
-                }
-            }
-            requestAnimationFrame(lenisRaf);
-        } catch { /* fallback para scroll nativo suave */ }
-    }
-
+    // ---- ScrollTrigger sobre o scroll NATIVO (sem Lenis, sem inércia) -------------------
     window.addEventListener('scroll', () => ScrollTrigger.update(), { passive: true });
 
-    // O stage é preso por CSS `position: sticky`. O scrub suaviza transições entre quadros.
+    // O stage é preso por CSS `position: sticky`. scrub: true = progresso lê a rolagem
+    // direto, sem segundos de "alcance" — zero atraso percebido.
     const pinTrigger = ScrollTrigger.create({
         trigger: wrap,
         start: 'top top',
         end: 'bottom bottom',
-        scrub: 0.8,
+        scrub: true,
         onUpdate: self => {
             state.progress = self.progress;
             document.documentElement.classList.toggle('cine-over-stage', self.progress < 0.97);
@@ -307,7 +302,6 @@ export async function init(stageId) {
     return {
         destroy() {
             disposed = true;
-            try { lenis?.destroy(); } catch {}
             cancelAnimationFrame(rafId);
             window.removeEventListener('resize', resize);
             window.removeEventListener('hashchange', scrollToHash);

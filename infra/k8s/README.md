@@ -149,11 +149,28 @@ Os servicos internos ficam **ClusterIP** e sao acessados na demo via
 `kubectl port-forward` (o port-forward nao passa por NetworkPolicy, entao a demo
 funciona mesmo com o `default-deny-ingress`).
 
-> **O `up.ps1` ja sobe 7 destes forwards automaticamente** (web, gateway, identity-api,
-> campaigns-api, grafana, prometheus, rabbitmq) em segundo plano, e eles seguem ativos
-> apos o script terminar. PIDs em `%TEMP%\conexao-solidaria-portforward.pids`, logs em
-> `%TEMP%\conexao-solidaria-pf-logs\`. Desative com `-NoForward`; encerre com `down.ps1`.
-> **Zabbix e Elasticsearch nao entram na lista automatica** — rode-os manualmente.
+> **O `up.ps1` ja sobe 8 destes forwards automaticamente** (web, gateway, identity-api,
+> campaigns-api, grafana, prometheus, rabbitmq, zabbix-web) em segundo plano, e eles
+> seguem ativos apos o script terminar. PIDs em `%TEMP%\conexao-solidaria-portforward.pids`,
+> logs em `%TEMP%\conexao-solidaria-pf-logs\`. Desative com `-NoForward`; encerre com
+> `down.ps1`. **Elasticsearch nao entra na lista automatica** — rode-o manualmente.
+
+#### Religamento automatico (`forward.ps1`)
+
+`kubectl port-forward` prende num **pod**, nao no Service. Quando o Keel recria o pod
+apos um push de `:latest` (ou apos um `rollout restart`), o forward morre com
+`No such container` / `lost connection to pod` e sobra um processo zumbi: a porta local
+passa a recusar conexao sem aviso. Por isso cada forward roda sob um supervisor que o
+religa em ~2s, ja no pod novo.
+
+```powershell
+pwsh infra/k8s/forward.ps1           # sobe/religa os supervisores (o up.ps1 chama isto)
+pwsh infra/k8s/forward.ps1 -Status   # lista o estado e testa cada porta de verdade (HTTP)
+pwsh infra/k8s/forward.ps1 -Stop     # encerra supervisores + kubectl filhos
+```
+
+Use o `-Status` quando uma porta parar de responder: ele mostra se o processo esta vivo
+**e** se a porta responde — os dois casos divergem quando o forward vira zumbi.
 
 ```powershell
 # App e API (uso geral / Postman)

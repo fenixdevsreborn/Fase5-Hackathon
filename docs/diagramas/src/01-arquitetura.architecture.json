@@ -63,8 +63,8 @@
       "title": "Operacao",
       "items": [
         "Migrations em Jobs dedicados (RunOnStartup=false nos pods)",
-        "OTel -> Collector -> Tempo (traces) e Prometheus/Grafana",
-        "Alertas: DLQ > 0, Outbox > 20 por 2 min, 5xx",
+        "/metrics -> Prometheus (5 alvos) -> Grafana (4 dashboards)",
+        "Paineis de DLQ, Outbox pendente e 5xx; Zabbix p/ disponibilidade",
         "/health e /alive expostos por todos os servicos"
       ]
     }

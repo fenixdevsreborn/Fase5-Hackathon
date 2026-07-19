@@ -23,19 +23,12 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $overlay   = Join-Path $scriptDir "overlays/local"
 $ns        = "conexao-solidaria"
 
-# Encerra os port-forwards que o up.ps1 deixou em segundo plano (PIDs salvos +
-# varredura por seguranca de kubectl port-forward deste namespace).
+# Encerra os port-forwards que o up.ps1 deixou em segundo plano. Delegado ao
+# forward.ps1 -Stop porque agora cada forward tem um supervisor que o religa: matar
+# so o kubectl.exe (como era antes) fazia o supervisor recria-lo em seguida. O
+# -Stop mata os supervisores primeiro e so depois os kubectl filhos.
 Write-Host "==> Encerrando port-forwards em segundo plano..." -ForegroundColor Cyan
-$pidFile = Join-Path ([System.IO.Path]::GetTempPath()) "conexao-solidaria-portforward.pids"
-if (Test-Path $pidFile) {
-    Get-Content $pidFile | Where-Object { $_ } | ForEach-Object {
-        Stop-Process -Id ([int]$_) -Force -ErrorAction SilentlyContinue
-    }
-    Remove-Item $pidFile -ErrorAction SilentlyContinue
-}
-Get-CimInstance Win32_Process -Filter "Name = 'kubectl.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -match 'port-forward' -and $_.CommandLine -match [regex]::Escape($ns) } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+& (Join-Path $scriptDir "forward.ps1") -Stop
 
 Write-Host "==> Removendo a stack (kubectl delete -k)..." -ForegroundColor Cyan
 kubectl delete -k $overlay --ignore-not-found

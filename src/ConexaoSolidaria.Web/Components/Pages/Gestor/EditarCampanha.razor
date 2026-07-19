@@ -8,12 +8,9 @@
 
 <AuthorizeView Roles="GestorONG">
     <Authorized>
-        <header class="cs-page-header">
+      <div class="cs-page-shell">
+        <header class="cs-page-header cs-page-header--plain">
             <div class="cs-page-header__content">
-                <span class="cs-page-header__badge">
-                    <MudIcon Icon="@Icons.Material.Filled.Edit" Size="Size.Small" />
-                    Ajustar detalhes
-                </span>
                 <h1 class="cs-page-header__title">Editar <span>Campanha</span></h1>
                 <p class="cs-page-header__lead">
                     Atualize os dados da sua campanha abaixo. As alterações serão salvas e validadas pela plataforma.
@@ -56,6 +53,7 @@
                 </aside>
             </div>
         }
+      </div>
     </Authorized>
     <NotAuthorized>
         <section class="cs-access-state"><div>

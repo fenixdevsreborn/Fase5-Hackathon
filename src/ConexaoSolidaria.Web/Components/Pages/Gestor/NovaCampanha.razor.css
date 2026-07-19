@@ -119,6 +119,18 @@
 
 .nova-campanha__lote-acoes ::deep .mud-button-root { min-height: 44px; border-radius: 11px; font-weight: 700; }
 
+/* Painel destacado quando o usuario escolheu esse modo no modal (?modo=ia|planilha). */
+.nova-campanha__ai--foco {
+    border-color: #9cc4fb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18), 0 16px 44px rgba(18, 50, 91, 0.12);
+    animation: nova-foco 1.6s ease-in-out 1;
+}
+
+@keyframes nova-foco {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18), 0 16px 44px rgba(18, 50, 91, 0.12); }
+    40% { box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.28), 0 18px 48px rgba(18, 50, 91, 0.16); }
+}
+
 .nova-campanha__ai--import .nova-campanha__ai-head { background: linear-gradient(120deg, #0f7594, #23a36d); }
 .nova-campanha__import-erros { margin: 6px 0 0; padding-left: 18px; font-size: 0.78rem; line-height: 1.5; }
 

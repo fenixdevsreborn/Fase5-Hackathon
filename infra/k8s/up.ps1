@@ -66,8 +66,26 @@ kubectl config use-context docker-desktop | Out-Null
 # Apos updates do Docker Desktop, o CA do kubeconfig pode ficar defasado e o kubectl
 # falha com 'x509: certificate signed by unknown authority'. Correcao SO PARA O
 # CLUSTER LOCAL docker-desktop (nunca use isto fora de dev). Ver ReadmeKubernetes.md.
+#
+# CUIDADO - esta correcao e DESTRUTIVA e permanente: --insecure-skip-tls-verify e
+# certificate-authority-data sao mutuamente exclusivos, entao o set-cluster abaixo
+# APAGA o CA do kubeconfig. Depois disso nao ha volta por `--insecure...=false` (o
+# CA nao e restaurado, so fica um cluster sem CA nenhuma), e `kubectl exec` passa a
+# falhar com 'server gave HTTP response to HTTPS client' mesmo com get/logs
+# funcionando. Por isso guardamos uma copia do kubeconfig antes de mexer: para
+# recuperar o CA original, restaure o .bak (ou reative o Kubernetes no Docker Desktop,
+# que reescreve o ~/.kube/config do zero).
 $probe = kubectl get --raw='/readyz' 2>&1
 if ($LASTEXITCODE -ne 0 -and ($probe -match 'x509|certificate signed by unknown authority')) {
+    $kubeCfg = Join-Path $env:USERPROFILE ".kube/config"
+    if (Test-Path $kubeCfg) {
+        $stamp  = (Get-Item $kubeCfg).LastWriteTime.ToString("yyyyMMdd-HHmmss")
+        $backup = "$kubeCfg.bak-$stamp"
+        if (-not (Test-Path $backup)) {
+            Copy-Item $kubeCfg $backup
+            Write-Step "kubeconfig salvo em $backup (o passo abaixo apaga o CA)."
+        }
+    }
     Write-Step "kubeconfig com CA defasada (local); aplicando --insecure-skip-tls-verify no cluster docker-desktop..."
     kubectl config set-cluster docker-desktop --insecure-skip-tls-verify=true | Out-Null
 }
@@ -143,8 +161,14 @@ function Require-Env($name) {
 }
 
 # Mapeia .env -> chaves do Secret (ver secret.example.yaml).
-# zabbix-user nao existe no .env; usa o default 'Admin' (ReadmeKubernetes secao 8).
-$zabbixUser = if ($envVars.ContainsKey("ZABBIX_USER") -and $envVars["ZABBIX_USER"]) { $envVars["ZABBIX_USER"] } else { "Admin" }
+# zabbix-user e o usuario do POSTGRES do Zabbix (nao o login da UI). Tem de casar com
+# o `CREATE USER zabbix` do postgres-init (base/postgres.yaml), que e fixo: qualquer
+# outro valor faz o zabbix-server/web entrar em loop de
+#     **** PostgreSQL server is not available. Waiting 5 seconds...
+# porque o Postgres responde `role "<valor>" does not exist`. Era o caso do antigo
+# default 'Admin', copiado por engano do login de fabrica da UI (Admin/zabbix).
+# Por isso e fixo aqui e NAO sai do .env: os dois lados precisam mudar juntos.
+$zabbixUser = "zabbix"
 # openai-api-key e OPCIONAL (features de IA do Web): vazia = app sobe com as features ocultas.
 $openAiKey = if ($envVars.ContainsKey("OPENAI_API_KEY")) { $envVars["OPENAI_API_KEY"] } else { "" }
 $literals = @(
@@ -212,6 +236,12 @@ Write-Host "Stack no ar (12 pods)." -ForegroundColor Green
 # o caminho de acesso local e o port-forward. Aqui eles sobem sozinhos, em segundo
 # plano, e continuam vivos apos o script terminar (svc/gateway ja pronto p/ Postman).
 # Encerre com down.ps1, com -NoForward para nem subir, ou Stop-Process nos PIDs salvos.
+#
+# Quem sobe de fato e o forward.ps1: cada forward fica sob um supervisor que o
+# religa quando o pod e recriado (o Keel troca o pod a cada push de :latest e o
+# `kubectl port-forward` prende no POD, nao no Service - sem supervisor a porta
+# local morre calada). A tabela abaixo so alimenta o relatorio e o -NoForward;
+# a lista efetiva vive no forward.ps1.
 $forwards = @(
     @{ Svc = "web";           Map = "18088:80";    Url = "http://localhost:18088";         Desc = "App (Blazor)" }
     @{ Svc = "gateway";       Map = "18080:80";    Url = "http://localhost:18080/api/...";  Desc = "API via Gateway (Postman)" }
@@ -232,27 +262,18 @@ if ($NoForward) {
     }
 }
 else {
-    Write-Step "Liberando os port-forwards em segundo plano..."
-    # Encerra port-forwards anteriores deste namespace (evita 'address already in use' no re-run).
-    Get-CimInstance Win32_Process -Filter "Name = 'kubectl.exe'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -match 'port-forward' -and $_.CommandLine -match [regex]::Escape($ns) } |
-        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    # forward.ps1 cuida de encerrar os anteriores, criar o logDir e gravar o $pidFile.
+    & (Join-Path $scriptDir "forward.ps1")
+    if ($LASTEXITCODE -ne 0) { throw "forward.ps1 falhou" }
 
-    $logDir = Join-Path ([System.IO.Path]::GetTempPath()) "conexao-solidaria-pf-logs"
-    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
-    $pfPids = @()
+    Write-Host ""
     foreach ($f in $forwards) {
-        $pfArgs = @("port-forward", "-n", $ns, "svc/$($f.Svc)", $f.Map)
-        $p = Start-Process -FilePath "kubectl" -ArgumentList $pfArgs -WindowStyle Hidden -PassThru `
-                 -RedirectStandardOutput (Join-Path $logDir "$($f.Svc).log") `
-                 -RedirectStandardError  (Join-Path $logDir "$($f.Svc).err")
-        $pfPids += $p.Id
         Write-Host ("    {0,-28} {1,-32} (svc/{2} {3})" -f $f.Desc, $f.Url, $f.Svc, $f.Map) -ForegroundColor Green
     }
-    $pfPids | Set-Content -Path $pidFile
     Write-Host ""
-    Write-Host "Port-forwards ativos e continuam apos este script (PIDs: $pidFile; logs: $logDir)." -ForegroundColor DarkGray
-    Write-Host "Encerrar: pwsh infra/k8s/down.ps1  (ou Stop-Process -Id (Get-Content '$pidFile'))." -ForegroundColor DarkGray
+    Write-Host "Port-forwards ativos e continuam apos este script (PIDs: $pidFile)." -ForegroundColor DarkGray
+    Write-Host "Religam sozinhos quando o Keel recria um pod. Conferir: pwsh infra/k8s/forward.ps1 -Status" -ForegroundColor DarkGray
+    Write-Host "Encerrar: pwsh infra/k8s/down.ps1  (ou pwsh infra/k8s/forward.ps1 -Stop)." -ForegroundColor DarkGray
 }
 # --- 9) Credenciais de acesso (lidas do .env ja carregado) ------------------
 # Impressas em claro de proposito: e um ensaio LOCAL e a stack nao serve para nada
@@ -291,10 +312,11 @@ Write-Cred "Grafana" "http://localhost:3000" `
     (Require-Env 'GRAFANA_ADMIN_USER') (Require-Env 'GRAFANA_ADMIN_PASSWORD') `
     "Dashboards 'Conexao Solidaria' (Aplicacao, Negocio, Mensageria, Saude) ja provisionados."
 
-# Atencao: ZABBIX_USER/ZABBIX_PASSWORD do .env sao as credenciais do POSTGRES do
-# Zabbix, nao o login da UI. O frontend usa o default de fabrica Admin/zabbix.
+# Atencao: ZABBIX_PASSWORD do .env e a senha do POSTGRES do Zabbix (usuario fixo
+# 'zabbix', ver passo 3), nao o login da UI. O frontend usa o default Admin/zabbix.
+# Trocar um pelo outro foi o que manteve o Zabbix fora do ar por tanto tempo.
 Write-Cred "Zabbix" "http://localhost:8085" "Admin" "zabbix" `
-    "Default de fabrica do frontend (ZABBIX_USER/ZABBIX_PASSWORD do .env sao do banco, nao da UI)."
+    "Default de fabrica do frontend (ZABBIX_PASSWORD do .env e do banco, nao da UI)."
 
 Write-Host "  Prometheus http://localhost:9090 e os Swaggers (18081/18082) sobem sem autenticacao." -ForegroundColor DarkGray
 Write-Host "  Valores vindos do .env em $envPath - use apenas localmente." -ForegroundColor DarkGray

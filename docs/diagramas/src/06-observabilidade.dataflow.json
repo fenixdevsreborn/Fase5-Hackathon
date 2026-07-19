@@ -3,62 +3,52 @@
   "diagram_type": "dataflow",
   "meta": {
     "title": "Pipeline de Telemetria",
-    "subtitle": "OpenTelemetry, Prometheus, Tempo, Grafana e Zabbix - da instrumentacao ao alerta",
-    "viewBox": [1080, 760]
+    "subtitle": "Metricas via Prometheus (5 alvos), 4 dashboards no Grafana e Zabbix como segunda opiniao de disponibilidade",
+    "viewBox": [980, 760]
   },
   "stages": [
     { "label": "Servicos" },
     { "label": "Coleta" },
     { "label": "Armazenamento" },
-    { "label": "Visualizacao" },
-    { "label": "Alerta" }
+    { "label": "Visualizacao" }
   ],
   "nodes": [
-    { "id": "gw", "type": "security", "label": "Gateway", "sublabel": "YARP", "stage": 0, "row": 0 },
-    { "id": "identity", "type": "backend", "label": "Identity.Api", "sublabel": "auth", "stage": 0, "row": 1 },
-    { "id": "campaigns", "type": "backend", "label": "Campaigns.Api", "sublabel": "dominio", "stage": 0, "row": 2 },
+    { "id": "gw", "type": "security", "label": "Gateway", "sublabel": "/metrics", "stage": 0, "row": 0 },
+    { "id": "identity", "type": "backend", "label": "Identity.Api", "sublabel": "/metrics + /health", "stage": 0, "row": 1 },
+    { "id": "campaigns", "type": "backend", "label": "Campaigns.Api", "sublabel": "/metrics + /health", "stage": 0, "row": 2 },
     { "id": "worker", "type": "backend", "label": "Worker", "sublabel": "consumo", "stage": 0, "row": 3 },
-    { "id": "rabbit", "type": "messagebus", "label": "RabbitMQ", "sublabel": ":15692", "stage": 0, "row": 4 },
+    { "id": "rabbit", "type": "messagebus", "label": "RabbitMQ", "sublabel": "plugin :15692", "stage": 0, "row": 4 },
 
-    { "id": "otel", "type": "cloud", "label": "OTel Collector", "sublabel": "OTLP", "stage": 1, "row": 1, "tag": "traces" },
-    { "id": "prom", "type": "cloud", "label": "Prometheus", "sublabel": "scrape 5s", "stage": 1, "row": 3, "tag": "metricas" },
-    { "id": "zabbix", "type": "cloud", "label": "Zabbix", "sublabel": "itens HTTP", "stage": 1, "row": 4 },
+    { "id": "prom", "type": "cloud", "label": "Prometheus", "sublabel": "scrape 5s", "stage": 1, "row": 1, "tag": "5 alvos" },
+    { "id": "zabbix", "type": "cloud", "label": "Zabbix server", "sublabel": "checks HTTP :8080", "stage": 1, "row": 3 },
 
-    { "id": "tempo", "type": "database", "label": "Tempo", "sublabel": "traces :3200", "stage": 2, "row": 1 },
-    { "id": "tsdb", "type": "database", "label": "TSDB", "sublabel": "series temporais", "stage": 2, "row": 3 },
+    { "id": "tsdb", "type": "database", "label": "TSDB", "sublabel": "series temporais", "stage": 2, "row": 1 },
 
-    { "id": "grafana", "type": "frontend", "label": "Grafana", "sublabel": "4 dashboards", "stage": 3, "row": 2, "tag": "negocio / app / fila / saude" },
-
-    { "id": "alertas", "type": "security", "label": "Alertas", "sublabel": "regras provisionadas", "stage": 4, "row": 1 },
-    { "id": "triggers", "type": "security", "label": "Triggers", "sublabel": "9 no template", "stage": 4, "row": 4 }
+    { "id": "grafana", "type": "frontend", "label": "Grafana", "sublabel": "4 dashboards", "stage": 3, "row": 1, "tag": "datasource Prometheus" },
+    { "id": "zabbixweb", "type": "frontend", "label": "Zabbix Web", "sublabel": "disponibilidade", "stage": 3, "row": 3 }
   ],
   "flows": [
-    { "from": "gw", "to": "otel", "label": "spans HTTP", "classification": "traceparent" },
-    { "from": "identity", "to": "otel", "label": "spans de auth" },
-    { "from": "campaigns", "to": "otel", "label": "spans dominio", "variant": "emphasis" },
-
+    { "from": "gw", "to": "prom", "label": "metrics" },
+    { "from": "identity", "to": "prom", "label": "metrics" },
+    { "from": "campaigns", "to": "prom", "label": "metrics", "variant": "emphasis" },
     { "from": "worker", "to": "prom", "label": "donations_*", "variant": "emphasis", "classification": "custom" },
-    { "from": "rabbit", "to": "prom", "label": "ready / unacked" },
-    { "from": "rabbit", "to": "zabbix", "label": "saude do broker", "variant": "dashed" },
+    { "from": "rabbit", "to": "prom", "label": "ready / unacked", "labelDy": -22 },
 
-    { "from": "otel", "to": "tempo", "label": "traces", "variant": "emphasis" },
+    { "from": "campaigns", "to": "zabbix", "label": "check :8080", "variant": "dashed", "labelDy": 26 },
+
     { "from": "prom", "to": "tsdb", "label": "amostras", "variant": "emphasis" },
-
-    { "from": "tempo", "to": "grafana", "label": "trace explore", "classification": "read-only" },
     { "from": "tsdb", "to": "grafana", "label": "PromQL", "variant": "emphasis", "classification": "read-only" },
-
-    { "from": "grafana", "to": "alertas", "label": "DLQ / Outbox / 5xx", "variant": "security" },
-    { "from": "zabbix", "to": "triggers", "label": "checks HTTP", "variant": "dashed" }
+    { "from": "zabbix", "to": "zabbixweb", "label": "status", "variant": "dashed" }
   ],
   "cards": [
     {
       "dot": "cyan",
       "title": "Instrumentacao unica",
       "items": [
-        "ServiceDefaults liga OTel, /health, /alive e resiliencia HTTP",
-        "Todo servico referencia o mesmo projeto - nada e opcional",
-        "X-Correlation-Id do Gateway + traceparent ate o Worker",
-        "/metrics exposto por prometheus-net, inclusive no Gateway"
+        "ServiceDefaults liga OTel (metricas), /health, /alive e resiliencia HTTP",
+        "/metrics exposto por prometheus-net, inclusive no Gateway",
+        "X-Correlation-Id do Gateway + traceparent propagado ate o Worker",
+        "OTel pronto p/ exportar traces; sem Collector/Tempo no cluster, exporter off"
       ]
     },
     {
@@ -75,10 +65,10 @@
       "dot": "rose",
       "title": "Do sintoma a causa",
       "items": [
-        "Dashboard mostra o pico -> Explore abre o trace no Tempo",
-        "Trace atravessa Gateway, Api, fila e Worker",
-        "Alertas disparam antes do usuario perceber",
-        "Zabbix cobre disponibilidade como segunda opiniao"
+        "Prometheus faz scrape de 5 alvos: gateway, identity, campaigns, worker, rabbitmq",
+        "Grafana: dashboards Aplicacao, Negocio, Mensageria e Saude (paineis, sem alerta provisionado)",
+        "Zabbix faz check HTTP :8080 em identity-api, campaigns-api e donations-worker",
+        "Zabbix cobre disponibilidade como segunda opiniao independente"
       ]
     }
   ]

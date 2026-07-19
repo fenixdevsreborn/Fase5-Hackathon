@@ -127,7 +127,7 @@
       <span class="stat"><b>4 serviços</b> · Gateway, Identity, Campaigns, Worker</span>
       <span class="stat"><b>Postgres</b> + Elasticsearch + RabbitMQ</span>
       <span class="stat"><b>Kubernetes</b> · Kustomize</span>
-      <span class="stat"><b>OTel</b> · Prometheus · Tempo · Grafana · Zabbix</span>
+      <span class="stat"><b>OTel</b> · Prometheus · Grafana · Zabbix</span>
     </div>
   </header>
 
@@ -167,9 +167,9 @@
       <div class="n">04</div>
       <h2>Resiliência da Mensageria</h2>
       <p>O que acontece quando dá errado. Outbox garante que nada se perde, dedup garante
-         que nada processa duas vezes, retry 10s/60s e dead-letter contêm a falha — e o
-         alerta do Grafana avisa antes do usuário perceber.</p>
-      <ul class="tags"><li>Publisher confirms</li><li>Retry escalonado</li><li>DLQ</li><li>Alertas</li></ul>
+         que nada processa duas vezes, retry 10s/60s e dead-letter contêm a falha — e os
+         painéis do Grafana tornam DLQ e Outbox pendente visíveis.</p>
+      <ul class="tags"><li>Publisher confirms</li><li>Retry escalonado</li><li>DLQ</li><li>Painéis</li></ul>
     </a>
 
     <a class="card" href="05-ciclo-de-vida.html" style="--accent: var(--database)">
@@ -186,10 +186,10 @@
       <span class="kind">DATAFLOW</span>
       <div class="n">06</div>
       <h2>Pipeline de Telemetria</h2>
-      <p>Como a telemetria sai dos serviços e vira alerta: OTLP para o Collector e Tempo,
-         scrape do Prometheus, dashboards no Grafana e o Zabbix como segunda opinião
-         de disponibilidade.</p>
-      <ul class="tags"><li>OpenTelemetry</li><li>Prometheus</li><li>Tempo</li><li>Grafana</li><li>Zabbix</li></ul>
+      <p>Como a telemetria sai dos serviços e vira dashboard: Prometheus faz scrape de 5 alvos
+         (<code>/metrics</code>), Grafana mostra 4 dashboards e o Zabbix cobre disponibilidade
+         como segunda opinião via checks HTTP.</p>
+      <ul class="tags"><li>Prometheus</li><li>5 alvos</li><li>Grafana</li><li>Zabbix</li></ul>
     </a>
 
     <a class="card" href="07-assistente-ia.html" style="--accent: var(--external)">

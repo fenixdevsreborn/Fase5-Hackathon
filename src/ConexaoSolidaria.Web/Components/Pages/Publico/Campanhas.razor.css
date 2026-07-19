@@ -1,4 +1,5 @@
-.campaign-page { color: var(--cs-ink); }
+/* Mesma grade do Portal de Transparencia: conteudo centralizado e limitado a 900px. */
+.campaign-page { color: var(--cs-ink); width: min(100%, 900px); margin: 0 auto; }
 
 .campaign-hero {
     position: relative;

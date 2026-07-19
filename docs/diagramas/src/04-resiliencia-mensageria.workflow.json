@@ -3,7 +3,7 @@
   "diagram_type": "workflow",
   "meta": {
     "title": "Resiliencia da Mensageria",
-    "subtitle": "Outbox transacional, publisher confirms, retry escalonado, DLQ e alertas"
+    "subtitle": "Outbox transacional, publisher confirms, retry escalonado, DLQ e paineis de observabilidade"
   },
   "lanes": [
     { "id": "api", "label": "Campaigns.Api" },
@@ -27,7 +27,7 @@
     { "id": "retry", "lane": "exceptions", "col": 3, "type": "messagebus", "label": "Retry", "sublabel": "10s -> 60s" },
     { "id": "dlq", "lane": "exceptions", "col": 5, "type": "security", "label": "Dead letter", "sublabel": "doacoes.dead-letter" },
     { "id": "outboxm", "lane": "ops", "col": 0, "type": "cloud", "label": "Outbox", "sublabel": "pending gauge" },
-    { "id": "alerta", "lane": "ops", "col": 5, "type": "cloud", "label": "Alerta", "sublabel": "Grafana" }
+    { "id": "alerta", "lane": "ops", "col": 5, "type": "cloud", "label": "Painel", "sublabel": "Grafana DLQ" }
   ],
   "edges": [
     { "from": "post", "to": "tx", "variant": "default" },
@@ -65,8 +65,8 @@
       "title": "Quando da errado",
       "items": [
         "doacoes.retry.10s -> doacoes.retry.60s -> doacoes.dead-letter",
-        "Alertas Grafana: DLQ > 0 e Outbox > 20 por 2 min",
-        "Metricas conexao_dead_letter_messages e publish_failures_total",
+        "Paineis Grafana vigiam DLQ e Outbox pendente (limiares visuais, sem alerta provisionado)",
+        "Metricas conexao_dead_letter_messages e conexao_donation_publish_failures_total",
         "Fila e consumidores visiveis via plugin prometheus (:15692)"
       ]
     }

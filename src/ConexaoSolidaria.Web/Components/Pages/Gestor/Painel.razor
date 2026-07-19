@@ -1,6 +1,7 @@
 @page "/gestor"
 @using System.Globalization
 @using ConexaoSolidaria.Web.Components.Dashboard
+@using ConexaoSolidaria.Web.Components.Campaigns
 @inject ApiClient Api
 @inject NavigationManager Nav
 @inject IDialogService DialogService
@@ -10,12 +11,9 @@
 
 <AuthorizeView Roles="GestorONG">
     <Authorized>
-        <header class="cs-page-header">
+      <div class="cs-page-shell">
+        <header class="cs-page-header cs-page-header--plain">
             <div class="cs-page-header__content">
-                <span class="cs-page-header__badge">
-                    <MudIcon Icon="@Icons.Material.Filled.Analytics" Size="Size.Small" />
-                    Painel do Gestor
-                </span>
                 <h1 class="cs-page-header__title">Gestão de <span>Campanhas</span></h1>
                 <p class="cs-page-header__lead">
                     Visão de negócio e métricas de arrecadação das campanhas da sua ONG em tempo real.
@@ -25,7 +23,7 @@
                 <MudButton Variant="Variant.Filled"
                            Color="Color.Primary"
                            StartIcon="@Icons.Material.Filled.AddCircle"
-                           Href="/gestor/campanhas/nova">
+                           OnClick="AbrirNovaCampanhaAsync">
                     Nova campanha
                 </MudButton>
             </div>
@@ -48,7 +46,7 @@
                 <span class="cs-empty-state__icon"><MudIcon Icon="@Icons.Material.Filled.Campaign" Size="Size.Large" /></span>
                 <h2>Sua primeira campanha começa aqui</h2>
                 <p>Crie uma causa, defina uma meta transparente e comece a mobilizar sua comunidade.</p>
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AddCircle" Href="/gestor/campanhas/nova">Criar campanha</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AddCircle" OnClick="AbrirNovaCampanhaAsync">Criar campanha</MudButton>
             </div></section>
         }
         else
@@ -58,48 +56,34 @@
                 <span class="gestor-live"><i></i> Dados atualizados</span>
             </div>
 
-            <MudGrid Class="cs-dashboard-kpis mb-3">
-                <MudItem xs="12" sm="6" md="4" lg="2">
-                    <KpiCard Titulo="Campanhas ativas" Valor="@_ativas.ToString(Br)"
-                             Icone="@Icons.Material.Filled.PlayCircle" Cor="Color.Success" />
-                </MudItem>
-                <MudItem xs="12" sm="6" md="4" lg="3">
-                    <KpiCard Titulo="Total arrecadado" Valor="@FormatMoeda(_totalArrecadado)"
-                             Icone="@Icons.Material.Filled.Savings" Cor="Color.Primary" />
-                </MudItem>
-                <MudItem xs="12" sm="6" md="4" lg="2">
-                    <KpiCard Titulo="Total de campanhas" Valor="@_campanhas.Count.ToString(Br)"
-                             Icone="@Icons.Material.Filled.Campaign" Cor="Color.Info" />
-                </MudItem>
-                <MudItem xs="12" sm="6" md="4" lg="3">
-                    <KpiCard Titulo="Média por campanha ativa" Valor="@FormatMoeda(_mediaPorAtiva)"
-                             Icone="@Icons.Material.Filled.Analytics" Cor="Color.Tertiary" />
-                </MudItem>
-                <MudItem xs="12" sm="6" md="4" lg="2">
-                    <KpiCard Titulo="Concluídas" Valor="@_concluidas.ToString(Br)"
-                             Icone="@Icons.Material.Filled.CheckCircle" Cor="Color.Secondary" />
-                </MudItem>
-            </MudGrid>
+            <div class="cs-dashboard-kpis">
+                <KpiCard Titulo="Campanhas ativas" Valor="@_ativas.ToString(Br)"
+                         Icone="@Icons.Material.Filled.PlayCircle" Cor="Color.Success" />
+                <KpiCard Titulo="Total arrecadado" Valor="@FormatMoeda(_totalArrecadado)"
+                         Icone="@Icons.Material.Filled.Savings" Cor="Color.Primary" />
+                <KpiCard Titulo="Total de campanhas" Valor="@_campanhas.Count.ToString(Br)"
+                         Icone="@Icons.Material.Filled.Campaign" Cor="Color.Info" />
+                <KpiCard Titulo="Média por campanha ativa" Valor="@FormatMoeda(_mediaPorAtiva)"
+                         Icone="@Icons.Material.Filled.Analytics" Cor="Color.Tertiary" />
+                <KpiCard Titulo="Concluídas" Valor="@_concluidas.ToString(Br)"
+                         Icone="@Icons.Material.Filled.CheckCircle" Cor="Color.Secondary" />
+            </div>
 
             <div class="cs-section-heading" data-reveal>
                 <div><span class="cs-kicker">Leitura visual</span><h2>Arrecadação e metas</h2></div>
                 <p>Compare a distribuição dos recursos e a evolução das campanhas com maior alcance.</p>
             </div>
 
-            <MudGrid Class="cs-dashboard-charts mb-3">
-                <MudItem xs="12" md="5">
-                    <MudPaper Class="cs-chart-panel pa-5" Elevation="0" data-reveal>
-                        <MudText Typo="Typo.subtitle1" GutterBottom="true"><b>Distribuição do arrecadado</b></MudText>
-                        <CampaignDistributionChart Campanhas="_campanhas" />
-                    </MudPaper>
-                </MudItem>
-                <MudItem xs="12" md="7">
-                    <MudPaper Class="cs-chart-panel pa-5" Elevation="0" data-reveal>
-                        <MudText Typo="Typo.subtitle1" GutterBottom="true"><b>Arrecadado x meta</b></MudText>
-                        <GoalProgressChart Campanhas="_campanhas" />
-                    </MudPaper>
-                </MudItem>
-            </MudGrid>
+            <div class="cs-dashboard-charts">
+                <MudPaper Class="cs-chart-panel pa-5" Elevation="0" data-reveal>
+                    <MudText Typo="Typo.subtitle1" GutterBottom="true"><b>Distribuição do arrecadado</b></MudText>
+                    <CampaignDistributionChart Campanhas="_campanhas" />
+                </MudPaper>
+                <MudPaper Class="cs-chart-panel pa-5" Elevation="0" data-reveal>
+                    <MudText Typo="Typo.subtitle1" GutterBottom="true"><b>Arrecadado x meta</b></MudText>
+                    <GoalProgressChart Campanhas="_campanhas" />
+                </MudPaper>
+            </div>
 
             <div class="cs-section-heading" data-reveal>
                 <div><span class="cs-kicker">Gestão diária</span><h2>Campanhas</h2></div>
@@ -181,6 +165,7 @@
                 Métricas técnicas ficam no Grafana/Prometheus.
             </MudText>
         }
+      </div>
     </Authorized>
     <NotAuthorized>
         <section class="cs-access-state"><div>
@@ -208,6 +193,20 @@
     private decimal _mediaPorAtiva;
 
     protected override async Task OnInitializedAsync() => await CarregarAsync();
+
+    // Abre o seletor de modo de criacao (manual / IA / planilha). Cada opcao leva
+    // para /gestor/campanhas/nova com ?modo=, focando o metodo escolhido.
+    private Task AbrirNovaCampanhaAsync()
+    {
+        var opcoes = new DialogOptions
+        {
+            MaxWidth = MaxWidth.ExtraSmall,
+            FullWidth = true,
+            CloseButton = true,
+            BackdropClick = true,
+        };
+        return DialogService.ShowAsync<CriarCampanhaDialog>("Nova campanha", opcoes);
+    }
 
     private async Task CarregarAsync()
     {
