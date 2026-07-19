@@ -1,110 +1,551 @@
-/* Portal de Transparência — layout limpo e estatísticas fluidas no estilo Index (sem caixas em bloco, sem bordas pesadas, botões com cores sólidas) */
+/* Portal de Transparência — painel de indicadores, gráficos e detalhamento por campanha.
+   O conteúdo é limitado a 900px dentro do container de 1500px do MainLayout. */
 
-.cs-tp-head,.cs-tp-stats,.cs-tp-stat,.cs-tp-grid,.cs-tp-main,.cs-tp-toolbar,.cs-tp-search-row,.cs-tp-search,.cs-tp-filter-row,.cs-tp-campaign-grid,.cs-tp-campaign,.cs-tp-side { box-sizing:border-box; max-width:100%; }
-.cs-tp-head { position: relative; display: flex; justify-content: space-between; gap: 32px; min-width:0; padding: 4px 0 24px; }
-.cs-tp-head>div:first-child { min-width:0; }
-.cs-tp-head__title { margin: 0; color: #0b2b61; font-size: clamp(2.25rem,3.5vw,3.5rem); font-weight: 850; line-height: 1.04; letter-spacing: -.045em; }
-.cs-tp-head__subtitle { max-width: 620px; margin: 12px 0 0; color: #637493; font-size: 1rem; line-height: 1.55; }
-.cs-tp-head__wave { position: relative; flex: 0 0 340px; height: 88px; max-width: 38%; }
-.cs-tp-head__line { position: absolute; inset: 40% 0 auto; height: 2px; border-radius: 99px; background: linear-gradient(90deg,transparent,#22c6ec 18%,#1a74f2 55%,#f97316 88%,transparent); transform: rotate(-6deg); opacity: .75; }
-.cs-tp-node { position: absolute; width: 11px; height: 11px; border: 3px solid #fff; border-radius: 50%; background: #1a74f2; box-shadow: 0 0 0 1.5px rgba(26,116,242,.5); animation: tp-pulse 2.2s ease-in-out infinite; }
-.cs-tp-node--a { top:20%;left:22%; }.cs-tp-node--b { top:8%;left:48%;animation-delay:.4s }.cs-tp-node--c { top:30%;left:70%;background:#f97316;animation-delay:.8s }.cs-tp-node--d { top:52%;left:92%;background:#f97316;animation-delay:1.2s }
+.cs-tp {
+    width: min(100%, 900px);
+    margin: 0 auto;
+    /* Tokens de gráfico. A superfície é a que o validador de paleta recebeu (#fff): contraste e
+       banda de luminosidade só valem contra a superfície em que o gráfico realmente é desenhado. */
+    --tp-surface: #fff;
+    --tp-ink: #10233c;
+    --tp-ink-2: #53647f;
+    --tp-muted: #8a98ad;
+    --tp-line: #e8edf5;
+    --tp-grid: #eef2f8;
+    --tp-accent: #2563eb;
+    --tp-accent-track: #cde2fb;
+}
 
-/* Estatísticas estilo Index: números fluidos sem caixas fechadas ou blocos */
-.cs-tp-stats { display: flex; align-items: center; gap: 42px; flex-wrap: wrap; margin-bottom: 32px; padding: 0; background: none; border: 0; box-shadow: none; }
-.cs-tp-stat { display: flex; flex-direction: column; gap: 2px; min-height: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
-.cs-tp-stat:hover { transform: none; box-shadow: none; }
-.cs-tp-stat__value { color: #0875fa; font-size: 1.85rem; font-weight: 850; line-height: 1.1; letter-spacing: -.02em; }
-.cs-tp-stat--accent .cs-tp-stat__value { color: #f46808; }
-.cs-tp-stat__label { color: #53647f; font-size: .8rem; font-weight: 700; margin-top: 2px; }
-.cs-tp-stat__hint { color: #8997ac; font-size: .72rem; font-weight: 600; }
+.cs-tp *,
+.cs-tp *::before,
+.cs-tp *::after { box-sizing: border-box; }
 
-.cs-tp-grid { display: grid; grid-template-columns: minmax(0,1fr) 292px; gap: 28px; align-items: start; }
-.cs-tp-main { min-width: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.cs-tp-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
 
-/* Toolbar limpa sem linhas divisórias pesadas */
-.cs-tp-toolbar { display: grid; gap: 12px; min-width: 0; padding-bottom: 8px; margin-bottom: 24px; border-bottom: 0; }
-.cs-tp-search-row { display: flex; min-width: 0; }
-.cs-tp-search { min-width: 0; min-height: 54px; display: flex; align-items: center; gap: 12px; flex: 1; padding: 6px 6px 6px 14px; border: 1px solid rgba(8, 117, 250, 0.18); border-radius: 999px; background: #fff; box-shadow: 0 8px 25px rgba(21,55,101,.05); transition: border-color .2s ease, box-shadow .2s ease; }
-.cs-tp-search:focus-within { border-color: #0875fa; box-shadow: 0 10px 30px rgba(8, 117, 250, .14); }
-.cs-tp-search__icon { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 50%; background: #eaf1ff; color: #0875fa; }
-.cs-tp-search__icon ::deep .mud-icon-root { font-size: 1.15rem; }
-.cs-tp-search__field { display: grid; flex: 1; min-width: 0; }
-.cs-tp-search__field>span { color: #53647f; font-size: .67rem; font-weight: 750; letter-spacing: .02em; }
-.cs-tp-search input { width: 100%; min-width: 0; box-sizing: border-box; padding: 1px 0; border: 0; outline: 0; background: transparent; color: #10233c; font: inherit; font-size: .9rem; }
+/* ---------------- Indicadores ---------------- */
+.cs-tp-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.cs-tp-kpi {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    min-width: 0;
+    padding: 16px 14px;
+    border: 1px solid var(--tp-line);
+    border-radius: 16px;
+    background: var(--tp-surface);
+    box-shadow: 0 6px 20px rgba(21, 55, 101, .045);
+}
+
+.cs-tp-kpi__icon {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 11px;
+}
+
+.cs-tp-kpi__icon ::deep .mud-icon-root { color: #fff; font-size: 1.25rem; }
+.cs-tp-kpi__icon--blue { background: #2563eb; }
+.cs-tp-kpi__icon--violet { background: #6d4bd6; }
+.cs-tp-kpi__icon--green { background: #12925c; }
+.cs-tp-kpi__icon--orange { background: #ea6a12; }
+
+.cs-tp-kpi__body { display: grid; gap: 2px; min-width: 0; }
+.cs-tp-kpi__label { color: var(--tp-ink-2); font-size: .74rem; font-weight: 700; }
+
+/* Figuras proporcionais: `tabular-nums` só nas colunas que precisam alinhar (tabela e eixo).
+   `nowrap` é obrigatório aqui: sem ele o valor quebra no meio do número ("R$ 1.248.760" / ",32").
+   O tamanho acompanha a largura disponível para caber inteiro em quatro colunas de 900px. */
+.cs-tp-kpi__value {
+    color: var(--tp-ink);
+    font-size: clamp(1rem, 1.42vw, 1.28rem);
+    font-weight: 800;
+    letter-spacing: -.02em;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.cs-tp-kpi__value--sm { font-size: clamp(.92rem, 1.15vw, 1.05rem); }
+.cs-tp-kpi__hint { color: var(--tp-muted); font-size: .69rem; font-weight: 600; }
+.cs-tp-kpi__hint--live { display: inline-flex; align-items: center; gap: 5px; }
+
+.cs-tp-dot {
+    width: 6px;
+    height: 6px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: #0ca30c;
+    box-shadow: 0 0 0 3px rgba(12, 163, 12, .14);
+}
+
+/* ---------------- Cartões ---------------- */
+.cs-tp-card {
+    min-width: 0;
+    margin-bottom: 18px;
+    padding: 20px;
+    border: 1px solid var(--tp-line);
+    border-radius: 18px;
+    background: var(--tp-surface);
+    box-shadow: 0 6px 20px rgba(21, 55, 101, .045);
+}
+
+.cs-tp-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.cs-tp-card__head--stack { margin-bottom: 14px; }
+.cs-tp-card__title { margin: 0; color: var(--tp-ink); font-size: 1.05rem; font-weight: 800; letter-spacing: -.02em; }
+.cs-tp-card__sub { max-width: 62ch; margin: 4px 0 0; color: var(--tp-ink-2); font-size: .78rem; line-height: 1.5; }
+.cs-tp-nodata { margin: 0; padding: 28px 0; color: var(--tp-muted); font-size: .82rem; text-align: center; }
+
+.cs-tp-duo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.cs-tp-duo > .cs-tp-card { margin-bottom: 0; }
+
+/* ---------------- Colunas: arrecadação por mês ----------------
+   A altura do container inclui a faixa do eixo X, para os rótulos dos meses nunca criarem um
+   scroll interno no cartão. */
+.cs-tp-bars { position: relative; height: 250px; padding: 0 0 26px 52px; }
+
+.cs-tp-bars__axis { position: absolute; inset: 0 0 26px 0; }
+
+.cs-tp-bars__tick { position: absolute; left: 0; width: 100%; height: 0; }
+
+.cs-tp-bars__tick-label {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 46px;
+    color: var(--tp-muted);
+    font-size: .66rem;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    transform: translateY(-50%);
+}
+
+/* Grade: fio de 1px sólido, um passo fora da superfície — nunca tracejada. */
+.cs-tp-bars__grid { position: absolute; right: 0; left: 52px; display: block; height: 1px; background: var(--tp-grid); }
+
+.cs-tp-bars__plot {
+    position: relative;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    border-bottom: 1px solid var(--tp-line);
+    list-style: none;
+}
+
+.cs-tp-bar { position: relative; display: flex; flex: 1 1 0; flex-direction: column; justify-content: flex-end; min-width: 0; height: 100%; }
+
+.cs-tp-bar__hit {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: default;
+}
+
+/* Marca fina, topo arredondado, base reta — cresce de uma única linha de base.
+   O piso de 2px mantém visível um valor pequeno porém real (R$ 30 numa escala de R$ 6k). */
+.cs-tp-bar__fill {
+    width: min(100%, 24px);
+    min-height: 2px;
+    margin: 0 auto;
+    border-radius: 4px 4px 0 0;
+    background: var(--tp-accent);
+    opacity: .85;
+    transition: opacity .18s ease, transform .18s ease;
+}
+
+/* Zero é zero: sem o piso, a coluna some e sobra a linha de base. */
+.cs-tp-bar__fill--zero { min-height: 0; }
+
+.cs-tp-bar__hit:hover .cs-tp-bar__fill,
+.cs-tp-bar__hit:focus-visible .cs-tp-bar__fill { opacity: 1; }
+.cs-tp-bar.is-peak .cs-tp-bar__fill { opacity: 1; }
+
+.cs-tp-bar__peak {
+    position: absolute;
+    left: 50%;
+    margin-bottom: 4px;
+    color: var(--tp-ink-2);
+    font-size: .64rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.cs-tp-bar__label {
+    padding-top: 7px;
+    color: var(--tp-muted);
+    font-size: .62rem;
+    font-weight: 600;
+    text-align: center;
+    white-space: nowrap;
+}
+
+/* Tooltip: complementa o eixo e o rótulo de pico — nenhum valor depende só dele. */
+.cs-tp-bar__tip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    z-index: 5;
+    display: grid;
+    gap: 1px;
+    margin-bottom: 8px;
+    padding: 7px 10px;
+    border-radius: 9px;
+    background: #0f2547;
+    box-shadow: 0 10px 24px rgba(9, 33, 66, .22);
+    color: #fff;
+    opacity: 0;
+    text-align: left;
+    white-space: nowrap;
+    transform: translate(-50%, 4px);
+    transition: opacity .15s ease, transform .15s ease;
+    pointer-events: none;
+}
+
+.cs-tp-bar__tip strong { font-size: .76rem; font-weight: 800; }
+.cs-tp-bar__tip small { color: #b9cdeb; font-size: .64rem; }
+
+.cs-tp-bar__hit:hover .cs-tp-bar__tip,
+.cs-tp-bar__hit:focus-visible .cs-tp-bar__tip { opacity: 1; transform: translate(-50%, 0); }
+
+/* Primeiras e últimas colunas: o tooltip encosta na borda do cartão sem vazar. */
+.cs-tp-bar:first-child .cs-tp-bar__tip,
+.cs-tp-bar:nth-child(2) .cs-tp-bar__tip { left: 0; transform: translate(0, 4px); }
+.cs-tp-bar:first-child .cs-tp-bar__hit:hover .cs-tp-bar__tip,
+.cs-tp-bar:first-child .cs-tp-bar__hit:focus-visible .cs-tp-bar__tip,
+.cs-tp-bar:nth-child(2) .cs-tp-bar__hit:hover .cs-tp-bar__tip,
+.cs-tp-bar:nth-child(2) .cs-tp-bar__hit:focus-visible .cs-tp-bar__tip { transform: translate(0, 0); }
+
+.cs-tp-bar:last-child .cs-tp-bar__tip,
+.cs-tp-bar:nth-last-child(2) .cs-tp-bar__tip { right: 0; left: auto; transform: translate(0, 4px); }
+.cs-tp-bar:last-child .cs-tp-bar__hit:hover .cs-tp-bar__tip,
+.cs-tp-bar:last-child .cs-tp-bar__hit:focus-visible .cs-tp-bar__tip,
+.cs-tp-bar:nth-last-child(2) .cs-tp-bar__hit:hover .cs-tp-bar__tip,
+.cs-tp-bar:nth-last-child(2) .cs-tp-bar__hit:focus-visible .cs-tp-bar__tip { transform: translate(0, 0); }
+
+/* ---------------- Rosca ---------------- */
+.cs-tp-donut { display: grid; gap: 16px; }
+.cs-tp-donut__svg { width: min(100%, 190px); height: auto; margin: 0 auto; display: block; }
+.cs-tp-donut__arc { transition: opacity .18s ease; }
+.cs-tp-donut:hover .cs-tp-donut__arc { opacity: .42; }
+.cs-tp-donut:hover .cs-tp-donut__arc.is-active { opacity: 1; }
+.cs-tp-donut__cap { fill: #8a98ad; font-size: 11px; font-weight: 600; }
+.cs-tp-donut__num { fill: #10233c; font-size: 17px; font-weight: 800; }
+
+.cs-tp-legend { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+
+.cs-tp-legend__item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 9px;
+    transition: background .15s ease;
+}
+
+.cs-tp-legend__item.is-active { background: #f4f8ff; }
+.cs-tp-legend__dot { width: 9px; height: 9px; border-radius: 3px; }
+
+/* Texto usa tokens de tinta; a identidade vem do quadradinho colorido ao lado. */
+.cs-tp-legend__name { overflow: hidden; color: var(--tp-ink-2); font-size: .76rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.cs-tp-legend__val { color: var(--tp-ink); font-size: .74rem; font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Largura fixa no percentual: sem ela "9,3%" e "34,7%" têm larguras diferentes e empurram os
+   valores em reais para posições distintas, quebrando o alinhamento da coluna. */
+.cs-tp-legend__val small {
+    display: inline-block;
+    min-width: 36px;
+    margin-left: 6px;
+    color: var(--tp-muted);
+    font-size: .68rem;
+    font-weight: 650;
+    text-align: right;
+}
+
+/* ---------------- Top campanhas ---------------- */
+.cs-tp-top { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.cs-tp-top__item { display: flex; align-items: center; gap: 10px; min-width: 0; }
+
+.cs-tp-top__rank {
+    width: 22px;
+    height: 22px;
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 50%;
+    background: #eef4ff;
+    color: var(--tp-accent);
+    font-size: .68rem;
+    font-weight: 800;
+}
+
+.cs-tp-top__body { display: grid; flex: 1; gap: 5px; min-width: 0; padding: 7px 8px; border-radius: 10px; color: inherit; text-decoration: none; transition: background .15s ease; }
+.cs-tp-top__body:hover { background: #f6f9ff; }
+.cs-tp-top__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
+.cs-tp-top__name { overflow: hidden; color: var(--tp-ink); font-size: .8rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.cs-tp-top__value { flex: 0 0 auto; color: var(--tp-ink); font-size: .78rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.cs-tp-top__meta { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cs-tp-top__pct { flex: 0 0 auto; min-width: 30px; color: var(--tp-ink-2); font-size: .68rem; font-weight: 750; font-variant-numeric: tabular-nums; text-align: right; }
+
+/* Medidor: trilho é um passo mais claro da MESMA rampa do preenchimento. */
+.cs-tp-meter { flex: 1; min-width: 40px; height: 6px; overflow: hidden; border-radius: 99px; background: var(--tp-accent-track); }
+.cs-tp-meter__fill { display: block; height: 100%; border-radius: inherit; background: var(--tp-accent); transition: width .6s cubic-bezier(.22, 1, .36, 1); }
+
+/* ---------------- Chips ---------------- */
+.cs-tp-chip { display: inline-block; flex: 0 0 auto; padding: 3px 8px; border-radius: 99px; font-size: .62rem; font-weight: 800; white-space: nowrap; }
+.cs-tp-chip--blue { background: #e6efff; color: #0b5ed7; }
+.cs-tp-chip--purple { background: #f0e9ff; color: #6d28d9; }
+.cs-tp-chip--indigo { background: #e8eaff; color: #4338ca; }
+.cs-tp-chip--teal { background: #d9f5f1; color: #0d7d73; }
+.cs-tp-chip--green { background: #e3f6e9; color: #15803d; }
+.cs-tp-chip--orange { background: #fff0e0; color: #c2570d; }
+.cs-tp-chip--pink { background: #fde8f3; color: #be1e63; }
+.cs-tp-chip--gray { background: #eef1f5; color: #56657c; }
+
+/* ---------------- Filtros ---------------- */
+.cs-tp-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+
+.cs-tp-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 260px;
+    min-width: 0;
+    height: 42px;
+    padding: 4px 4px 4px 12px;
+    border: 1px solid var(--tp-line);
+    border-radius: 999px;
+    background: var(--tp-surface);
+    transition: border-color .18s ease, box-shadow .18s ease;
+}
+
+.cs-tp-search:focus-within { border-color: var(--tp-accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, .12); }
+.cs-tp-search__icon { display: grid; flex: 0 0 auto; place-items: center; color: var(--tp-muted); }
+.cs-tp-search__icon ::deep .mud-icon-root { font-size: 1.1rem; }
+.cs-tp-search input { flex: 1; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--tp-ink); font: inherit; font-size: .82rem; }
 .cs-tp-search input::placeholder { color: #9aa7bb; }
 
-/* Botões sem degradê */
-.cs-tp-search__submit { height: 42px; padding: 0 22px; border: 0; border-radius: 999px; background: #0875fa; box-shadow: none; color: #fff; font: inherit; font-size: .84rem; font-weight: 800; cursor: pointer; transition: background .18s ease, transform .18s ease; }
-.cs-tp-search__submit:hover { background: #0660d4; transform: translateY(-1px); }
+.cs-tp-search__submit {
+    height: 34px;
+    flex: 0 0 auto;
+    padding: 0 16px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--tp-accent);
+    color: #fff;
+    font: inherit;
+    font-size: .76rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background .18s ease;
+}
 
-.cs-tp-filter-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.cs-tp-filter-row__label { display: inline-flex; align-items: center; gap: 6px; margin-right: auto; color: #64748b; font-size: .76rem; font-weight: 750; }
-.cs-tp-filter-row__label ::deep .mud-icon-root { font-size: 1rem; color: #0875fa; }
-.cs-tp-select { min-width: 178px; height: 46px; display: grid; grid-template-columns: 1fr auto; align-content: center; padding: 5px 10px 5px 13px; border: 1px solid #e0e7f1; border-radius: 12px; background: #fff; cursor: pointer; transition: border-color .18s ease, background .18s ease; }
-.cs-tp-select:hover { border-color: #a9c5ed; background: #fbfdff; }
-.cs-tp-select__prefix { grid-column: 1; color: #8a98ad; font-size: .62rem; font-weight: 700; }
-.cs-tp-select select { grid-column: 1; min-width: 0; padding: 0; border: 0; outline: 0; appearance: none; background: transparent; color: #263a59; font-size: .78rem; font-weight: 750; cursor: pointer; }
-.cs-tp-select ::deep .mud-icon-root { grid-column: 2; grid-row: 1/3; color: #76869d; font-size: 1rem; pointer-events: none; }
-.cs-tp-filtros { height: 40px; display: inline-flex; align-items: center; gap: 5px; padding: 0 14px; border: 0; border-radius: 10px; background: #edf3ff; color: #0875fa; font: inherit; font-size: .75rem; font-weight: 800; cursor: pointer; }
-.cs-tp-filtros:hover { background: #dfeaff; }
-.cs-tp-filtros ::deep .mud-icon-root { font-size: .95rem; }
+.cs-tp-search__submit:hover { background: #1d4ed8; }
 
-.cs-tp-results-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin: 0 2px 14px; }
-.cs-tp-results-head__eyebrow { color: #0875fa; font-size: .66rem; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
-.cs-tp-results-head h2 { margin: 3px 0 0; color: #102c5c; font-size: 1.35rem; line-height: 1.2; }
-.cs-tp-results-head__count { color: #7b8aa1; font-size: .75rem; }
+.cs-tp-select {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 1 auto;
+    height: 42px;
+    padding: 0 12px;
+    border: 1px solid var(--tp-line);
+    border-radius: 12px;
+    background: var(--tp-surface);
+    cursor: pointer;
+    transition: border-color .18s ease;
+}
 
-.cs-tp-campaign-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
-.cs-tp-campaign { min-height: 154px; display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid #e6ebf3; border-radius: 16px; background: #fff; color: inherit; text-decoration: none; transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease; animation: tp-rise .45s both; }
-.cs-tp-campaign:hover { transform: translateY(-3px); border-color: #bdd3f5; box-shadow: 0 12px 25px rgba(25,74,145,.08); }
-.cs-tp-campaign__top { display: flex; align-items: center; gap: 11px; min-width: 0; }
-.cs-tp-thumb { width: 58px; height: 58px; flex: 0 0 auto; border-radius: 12px; object-fit: cover; }
-.cs-tp-campaign__identity { display: flex; align-items: flex-start; flex-direction: column; gap: 5px; min-width: 0; }
-.cs-tp-campaign__identity strong { max-width: 100%; overflow: hidden; color: #142846; font-size: .92rem; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.cs-tp-select:hover { border-color: #b9cdea; }
+.cs-tp-select ::deep .mud-icon-root { color: var(--tp-muted); font-size: 1rem; }
+.cs-tp-select select { min-width: 0; padding: 0; border: 0; outline: 0; appearance: none; background: transparent; color: var(--tp-ink); font: inherit; font-size: .78rem; font-weight: 700; cursor: pointer; }
 
-.cs-tp-chip { display: inline-block; padding: 3px 8px; border-radius: 99px; font-size: .62rem; font-weight: 800; }
-.cs-tp-chip--blue { background: #e6efff; color: #0875fa; }
-.cs-tp-chip--purple { background: #f0e9ff; color: #7c3aed; }
-.cs-tp-chip--indigo { background: #e8eaff; color: #4f46e5; }
-.cs-tp-chip--teal { background: #d9f5f1; color: #0d9488; }
-.cs-tp-chip--green { background: #e3f6e9; color: #168a42; }
-.cs-tp-chip--orange { background: #fff0e0; color: #d96912; }
-.cs-tp-chip--pink { background: #fde8f3; color: #db2777; }
-.cs-tp-chip--gray { background: #eef1f5; color: #64748b; }
+.cs-tp-clear {
+    height: 42px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 12px;
+    background: #eef4ff;
+    color: var(--tp-accent);
+    font: inherit;
+    font-size: .76rem;
+    font-weight: 800;
+    cursor: pointer;
+}
 
-.cs-tp-campaign__values { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.cs-tp-campaign__values>span { display: grid; }
-.cs-tp-campaign__values>span:last-child { text-align: right; }
-.cs-tp-campaign__values small { color: #8794a8; font-size: .65rem; }
-.cs-tp-campaign__values strong { color: #142846; font-size: .84rem; }
-.cs-tp-campaign__values>span:first-child strong { color: #0875fa; }
+.cs-tp-clear:hover { background: #e0eaff; }
+.cs-tp-clear ::deep .mud-icon-root { font-size: .95rem; }
 
-.cs-tp-progress { display: flex; align-items: center; gap: 9px; margin-top: auto; }
-.cs-tp-progress__track { height: 6px; flex: 1; overflow: hidden; border-radius: 99px; background: #e9eef5; }
-.cs-tp-progress__fill { display: block; height: 100%; border-radius: inherit; background: #0875fa; transition: width .6s ease; }
-.cs-tp-progress__pct { min-width: 32px; color: #0875fa; font-size: .7rem; font-weight: 850; text-align: right; }
-.cs-tp-count { margin: 14px 3px 0; color: #8a98ad; font-size: .72rem; }
+/* ---------------- Tabela ---------------- */
+.cs-tp-table-wrap { margin: 0 -20px; overflow-x: auto; }
 
-/* Sidebar limpa */
-.cs-tp-side { position: sticky; top: 92px; padding: 22px; border: 0; border-radius: 20px; background: rgba(240, 245, 255, 0.7); }
-.cs-tp-side__head { display: flex; align-items: center; gap: 10px; }
-.cs-tp-side__badge { width: 38px; height: 38px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 11px; background: #0875fa; }
-.cs-tp-side__badge ::deep .mud-icon-root { color: #fff; font-size: 1.2rem; }
-.cs-tp-side__title { margin: 0; color: #0f2f5e; font-size: 1.03rem; line-height: 1.25; }
-.cs-tp-side__lead { margin: 12px 0 16px; color: #52698a; font-size: .8rem; line-height: 1.5; }
-.cs-tp-side__list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
-.cs-tp-side__list li { display: flex; align-items: flex-start; gap: 10px; }
-.cs-tp-side__ico { width: 30px; height: 30px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 9px; background: #fff; box-shadow: 0 4px 10px rgba(37,99,235,.1); }
-.cs-tp-side__ico ::deep .mud-icon-root { color: #0875fa; font-size: 1rem; }
-.cs-tp-side__list strong { display: block; margin-bottom: 1px; color: #10233c; font-size: .79rem; }
-.cs-tp-side__list span { color: #64748b; font-size: .72rem; line-height: 1.4; }
-.cs-tp-side__quote { display: flex; gap: 7px; margin: 16px 0 0; padding: 12px; border-radius: 12px; background: rgba(37,99,235,.075); color: #33507d; font-size: .75rem; font-style: italic; font-weight: 600; line-height: 1.45; }
-.cs-tp-side__quote ::deep .mud-icon-root { flex: 0 0 auto; color: #0875fa; font-size: 1rem; }
+/* `fixed` é obrigatório: com layout automático as colunas `nowrap` roubam o espaço e a primeira
+   — a única que cede — colapsa o título da campanha para "C…". Larguras declaradas só valem aqui. */
+.cs-tp-table { width: 100%; min-width: 840px; border-collapse: collapse; table-layout: fixed; }
 
-@keyframes tp-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes tp-pulse { 50% { transform: scale(1.2); } }
-@media (max-width: 1150px) { .cs-tp-grid { grid-template-columns: 1fr; } .cs-tp-side { position: static; } .cs-tp-side__list { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 760px) { .cs-tp-head__wave { display: none; } .cs-tp-campaign-grid { grid-template-columns: 1fr; } .cs-tp-side__list { grid-template-columns: 1fr; } .cs-tp-filter-row__label { flex-basis: 100%; } .cs-tp-select { flex: 1; } }
-@media (max-width: 540px) { .cs-tp-head__title { font-size: 2rem; overflow-wrap: anywhere; } .cs-tp-search { position: relative; gap: 8px; padding: 7px 10px 7px 58px; } .cs-tp-search__icon { display: none; } .cs-tp-search__field>span { display: none; } .cs-tp-search__submit { position: absolute; top: 7px; left: 7px; width: 42px; padding: 0; font-size: 0; } .cs-tp-search__submit::after { content: "⌕"; font-size: 1.35rem; line-height: 1; } .cs-tp-select { min-width: 100%; } .cs-tp-results-head { align-items: flex-start; flex-direction: column; gap: 4px; } }
-@media (prefers-reduced-motion: reduce) { .cs-tp-node,.cs-tp-campaign { animation: none; } .cs-tp-stat,.cs-tp-campaign,.cs-tp-search__submit { transition: none; } }
+.cs-tp-table th:nth-child(1) { width: 24%; }
+.cs-tp-table th:nth-child(2) { width: 11%; }
+.cs-tp-table th:nth-child(3) { width: 11%; }
+.cs-tp-table th:nth-child(4) { width: 12%; }
+.cs-tp-table th:nth-child(5) { width: 13%; }
+.cs-tp-table th:nth-child(6) { width: 8%; }
+.cs-tp-table th:nth-child(7) { width: 13%; }
+.cs-tp-table th:nth-child(8) { width: 8%; }
+
+.cs-tp-table th {
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--tp-line);
+    color: var(--tp-ink-2);
+    font-size: .66rem;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-align: left;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.cs-tp-table th:first-child, .cs-tp-table td:first-child { padding-left: 20px; }
+.cs-tp-table th:last-child, .cs-tp-table td:last-child { padding-right: 20px; }
+.cs-tp-table td { padding: 11px 10px; border-bottom: 1px solid #f2f5fa; color: var(--tp-ink); font-size: .76rem; vertical-align: middle; }
+.cs-tp-table tbody tr:last-child td { border-bottom: 0; }
+.cs-tp-table tbody tr { transition: background .15s ease; }
+.cs-tp-table tbody tr:hover { background: #f8fbff; }
+
+.cs-tp-num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.cs-tp-num--strong { color: var(--tp-accent); font-weight: 800; }
+
+.cs-tp-cell-campaign { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cs-tp-thumb { width: 38px; height: 38px; flex: 0 0 auto; border-radius: 9px; object-fit: cover; }
+.cs-tp-cell-campaign__text { display: grid; gap: 2px; min-width: 0; }
+
+/* O título quebra em até duas linhas em vez de virar reticências: nesta largura o corte de uma
+   linha só engolia quase o nome inteiro da campanha. */
+.cs-tp-cell-campaign__text strong {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--tp-ink);
+    font-size: .77rem;
+    font-weight: 700;
+    line-height: 1.3;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.cs-tp-cell-campaign__text small { overflow: hidden; color: var(--tp-muted); font-size: .67rem; text-overflow: ellipsis; white-space: nowrap; }
+
+.cs-tp-cell-progress { display: flex; align-items: center; gap: 8px; min-width: 118px; }
+.cs-tp-cell-progress__pct { flex: 0 0 auto; min-width: 28px; color: var(--tp-ink-2); font-size: .7rem; font-weight: 750; font-variant-numeric: tabular-nums; text-align: right; }
+
+/* Status e "atualizado em" moram na mesma célula: como coluna própria, o carimbo de hora custava
+   uma nona coluna que só cabia empurrando o título da campanha para fora. */
+.cs-tp-cell-status { display: grid; gap: 3px; justify-items: start; }
+.cs-tp-status { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 99px; background: #e8f7ec; color: #15803d; font-size: .68rem; font-weight: 750; white-space: nowrap; }
+.cs-tp-cell-status small { color: var(--tp-muted); font-size: .65rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cs-tp-actions a { color: var(--tp-accent); font-size: .72rem; font-weight: 750; text-decoration: none; white-space: nowrap; }
+.cs-tp-actions a:hover { text-decoration: underline; }
+.cs-tp-count { margin: 14px 0 0; color: var(--tp-muted); font-size: .72rem; }
+
+/* ---------------- Compromisso ---------------- */
+.cs-tp-trust { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; margin-top: 8px; padding: 22px 0 0; border-top: 1px solid var(--tp-line); }
+.cs-tp-trust article { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.cs-tp-trust__ico { width: 30px; height: 30px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 9px; background: #eef4ff; }
+.cs-tp-trust__ico ::deep .mud-icon-root { color: var(--tp-accent); font-size: 1rem; }
+.cs-tp-trust strong { display: block; margin-bottom: 3px; color: var(--tp-ink); font-size: .8rem; font-weight: 750; }
+.cs-tp-trust span { color: var(--tp-ink-2); font-size: .71rem; line-height: 1.5; }
+
+/* ---------------- Esqueletos (sem salto de layout) ---------------- */
+.cs-tp-chart-skeleton { height: 250px; }
+.cs-tp-donut-skeleton { height: 300px; }
+.cs-tp-top-skeleton { height: 220px; }
+
+.cs-tp-chart-skeleton,
+.cs-tp-donut-skeleton,
+.cs-tp-top-skeleton {
+    border-radius: 12px;
+    background: linear-gradient(100deg, #f4f7fc 30%, #eaf0f9 50%, #f4f7fc 70%) 0 0 / 220% 100%;
+    animation: tp-shimmer 1.4s linear infinite;
+}
+
+@keyframes tp-shimmer { to { background-position: -220% 0; } }
+
+/* ---------------- Responsivo ---------------- */
+/* A tabela precisa de 840px; abaixo disso ela vira cartões empilhados. O corte é 900px — e não
+   720px — porque entre os dois a tabela cabia só com rolagem lateral, escondendo a última coluna. */
+@media (max-width: 900px) {
+    .cs-tp-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cs-tp-trust { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+    .cs-tp-table-wrap { margin: 0; overflow-x: visible; }
+    .cs-tp-table { min-width: 0; }
+    .cs-tp-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .cs-tp-table tbody tr { display: grid; gap: 8px; margin-bottom: 10px; padding: 14px; border: 1px solid var(--tp-line); border-radius: 14px; }
+    .cs-tp-table tbody tr:hover { background: var(--tp-surface); }
+    .cs-tp-table td { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 12px; padding: 0; border: 0; }
+    .cs-tp-table td:first-child, .cs-tp-table td:last-child { padding: 0; }
+    .cs-tp-table td::before { content: attr(data-label); color: var(--tp-muted); font-size: .66rem; font-weight: 750; }
+    .cs-tp-table td[data-label="Campanha"] { grid-template-columns: 1fr; }
+    .cs-tp-table td[data-label="Campanha"]::before { display: none; }
+    .cs-tp-table td.cs-tp-num { text-align: left; }
+    /* O chip é uma etiqueta, não uma barra: sem isto o grid o estica por toda a coluna. */
+    .cs-tp-table td[data-label="Categoria"] .cs-tp-chip { justify-self: start; }
+    /* A célula de ação não tem rótulo — ocupa a linha inteira em vez de deixar uma calha vazia. */
+    .cs-tp-table td.cs-tp-actions { grid-template-columns: 1fr; padding-top: 2px; }
+    .cs-tp-table td.cs-tp-actions::before { display: none; }
+    .cs-tp-cell-campaign__text strong { -webkit-line-clamp: 3; }
+}
+
+@media (max-width: 720px) {
+    .cs-tp-duo { grid-template-columns: 1fr; }
+    .cs-tp-card { padding: 16px; }
+    .cs-tp-bars { height: 220px; padding-left: 46px; }
+    .cs-tp-bars__grid { left: 46px; }
+    .cs-tp-bars__tick-label { width: 40px; }
+    .cs-tp-bar__label { font-size: .56rem; }
+}
+
+@media (max-width: 480px) {
+    .cs-tp-kpis { grid-template-columns: 1fr; }
+    .cs-tp-trust { grid-template-columns: 1fr; }
+    .cs-tp-bars { height: 200px; }
+    /* 12 colunas não cabem: mantém a leitura por tooltip e alterna os rótulos do eixo. */
+    .cs-tp-bar:nth-child(even) .cs-tp-bar__label { visibility: hidden; }
+    .cs-tp-search { flex-basis: 100%; }
+    .cs-tp-select { flex: 1 1 45%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cs-tp-meter__fill,
+    .cs-tp-bar__fill,
+    .cs-tp-bar__tip,
+    .cs-tp-donut__arc { transition: none; }
+    .cs-tp-chart-skeleton,
+    .cs-tp-donut-skeleton,
+    .cs-tp-top-skeleton { animation: none; }
+}

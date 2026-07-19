@@ -43,6 +43,16 @@ public sealed record CampanhaStatsDto(
     long DoacoesProcessadas,
     DateTimeOffset AtualizadoEm);
 
+/// <summary>
+/// Um mes da serie de arrecadacao. Espelha ArrecadacaoMensalResponse da Campaigns.Api: soma das
+/// doacoes processadas na competencia, ja no fuso de referencia decidido pelo servidor.
+/// </summary>
+public sealed record ArrecadacaoMensalDto(
+    int Ano,
+    int Mes,
+    decimal Total,
+    long Doacoes);
+
 /// <summary>Envelope de paginacao. Espelha PaginatedResponse da Campaigns.Api.</summary>
 public sealed record Paginated<T>(
     IReadOnlyList<T> Items,

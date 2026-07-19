@@ -77,6 +77,11 @@ public sealed class CampaignsDbContext(DbContextOptions<CampaignsDbContext> opti
             entity.HasIndex(donation => donation.Status);
             // Consultas por doador (historico de doacoes de um usuario).
             entity.HasIndex(donation => donation.DoadorId);
+
+            // Serie mensal de arrecadacao do Portal de Transparencia: filtra Status = Processada
+            // com recorte por ProcessadaEm. Sem a segunda coluna, o indice de Status sozinho ainda
+            // obrigaria a varrer todas as doacoes processadas desde sempre a cada leitura.
+            entity.HasIndex(donation => new { donation.Status, donation.ProcessadaEm });
         });
 
         modelBuilder.Entity<OutboxMessage>(entity =>

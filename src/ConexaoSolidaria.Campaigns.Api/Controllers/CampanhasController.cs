@@ -24,6 +24,26 @@ public sealed class CampanhasController(
     /// <summary>Tamanho maximo aceito no upload de imagem (o storage revalida o limite real).</summary>
     private const long TamanhoMaximoImagem = 5 * 1024 * 1024;
 
+    /// <summary>
+    /// Fuso de competencia dos relatorios. Os timestamps sao gravados em UTC; a apuracao mensal
+    /// precisa de um fuso civil para decidir a que mes cada doacao pertence. Resolvido uma vez:
+    /// a busca por Id le o banco de fusos do SO. Cai para UTC se a base de fusos nao existir na
+    /// imagem (container "slim" sem tzdata), caso em que a competencia vira a UTC.
+    /// </summary>
+    private static readonly TimeZoneInfo FusoRelatorios = ResolverFuso("America/Sao_Paulo");
+
+    private static TimeZoneInfo ResolverFuso(string id)
+    {
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(id);
+        }
+        catch (Exception e) when (e is TimeZoneNotFoundException or InvalidTimeZoneException)
+        {
+            return TimeZoneInfo.Utc;
+        }
+    }
+
     // Upload DESACOPLADO da campanha (nao e /{id}/imagem) de proposito: a tela de lote monta varias
     // campanhas com foto ANTES de qualquer uma existir no banco. O gestor sobe a imagem, recebe o
     // nome do arquivo e o envia depois no POST/PUT da campanha.
@@ -232,6 +252,71 @@ public sealed class CampanhasController(
 
         return Ok(stats);
     }
+
+    /// <summary>
+    /// Serie historica de arrecadacao por mes, para o grafico do Portal de Transparencia.
+    /// Conta apenas doacoes PROCESSADAS (dinheiro efetivamente arrecadado) e as agrupa pela data
+    /// de PROCESSAMENTO, nao pela de criacao: uma doacao pendente ainda nao arrecadou nada.
+    /// </summary>
+    // SQL cru (e nao LINQ) por causa do fuso: "ProcessadaEm" e timestamptz e agrupar por
+    // EXTRACT/date_trunc direto usaria o fuso da SESSAO, que o Npgsql fixa em UTC. Uma doacao das
+    // 22h de 31/05 em Sao Paulo cairia em JUNHO no relatorio. O AT TIME ZONE explicito resolve o
+    // mes na competencia local, que e a que o leitor do portal espera ver.
+    [HttpGet("arrecadacao-mensal")]
+    [AllowAnonymous]
+    [OutputCache(Duration = 30)]
+    [ProducesResponseType<IReadOnlyCollection<ArrecadacaoMensalResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyCollection<ArrecadacaoMensalResponse>>> ArrecadacaoMensal(
+        [FromQuery] int meses,
+        CancellationToken cancellationToken)
+    {
+        var janela = meses <= 0 ? 12 : Math.Clamp(meses, 1, 36);
+
+        // Primeiro dia do mes mais antigo da janela, na competencia local, convertido para UTC —
+        // o filtro precisa ser em UTC porque e assim que a coluna esta armazenada.
+        var agoraLocal = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, FusoRelatorios);
+        var primeiraCompetencia = new DateOnly(agoraLocal.Year, agoraLocal.Month, 1).AddMonths(-(janela - 1));
+        var inicioUtc = TimeZoneInfo.ConvertTimeToUtc(
+            primeiraCompetencia.ToDateTime(TimeOnly.MinValue),
+            FusoRelatorios);
+
+        var fuso = FusoRelatorios.Id;
+        var processada = nameof(DonationStatus.Processada);
+
+        var linhas = await db.Database
+            .SqlQuery<ArrecadacaoMensalLinha>($"""
+                SELECT
+                    (date_trunc('month', d."ProcessadaEm" AT TIME ZONE {fuso}))::date AS "Competencia",
+                    SUM(d."Valor")                                                     AS "Total",
+                    COUNT(*)                                                           AS "Doacoes"
+                FROM donations d
+                WHERE d."Status" = {processada}
+                  AND d."ProcessadaEm" >= {inicioUtc}
+                GROUP BY 1
+                ORDER BY 1
+                """)
+            .ToListAsync(cancellationToken);
+
+        var porCompetencia = linhas.ToDictionary(linha => linha.Competencia);
+
+        // Preenche os meses vazios: a serie sai com exatamente `janela` pontos, sempre contigua.
+        var serie = new List<ArrecadacaoMensalResponse>(janela);
+        for (var i = 0; i < janela; i++)
+        {
+            var competencia = primeiraCompetencia.AddMonths(i);
+            porCompetencia.TryGetValue(competencia, out var linha);
+            serie.Add(new ArrecadacaoMensalResponse(
+                competencia.Year,
+                competencia.Month,
+                linha?.Total ?? 0m,
+                linha?.Doacoes ?? 0L));
+        }
+
+        return Ok(serie);
+    }
+
+    /// <summary>Linha crua devolvida pelo agrupamento mensal (antes do preenchimento das lacunas).</summary>
+    private sealed record ArrecadacaoMensalLinha(DateOnly Competencia, decimal Total, long Doacoes);
 
     // Acoes de ciclo de vida (gestor). O dominio valida a transicao; DomainRuleException vira 422 global.
     [HttpPost("{id:guid}/ativar")]
