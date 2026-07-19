@@ -58,9 +58,9 @@
     <div class="cs-chat__composer">
         <MudTextField T="string"
                       @bind-Value="_texto"
-                      Placeholder="Pergunte sobre campanhas ou doacoes..."
+                      Placeholder="Pergunte sobre campanhas ou doações..."
                       Variant="Variant.Text"
-                      Margin="Margin.Dense"
+                      Margin="Margin.None"
                       Immediate="true"
                       Underline="false"
                       Disabled="@Chat.Ocupado"
@@ -70,7 +70,7 @@
                 disabled="@(Chat.Ocupado || string.IsNullOrWhiteSpace(_texto))"
                 @onclick="EnviarAsync"
                 aria-label="Enviar mensagem">
-            <MudIcon Icon="@Icons.Material.Filled.Send" Size="Size.Small" />
+            <MudIcon Icon="@Icons.Material.Filled.Send" Size="Size.Medium" />
         </button>
     </div>
 </div>

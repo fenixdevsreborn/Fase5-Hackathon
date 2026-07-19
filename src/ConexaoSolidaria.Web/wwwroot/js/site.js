@@ -33,9 +33,17 @@
         }
     }
 
-    function prepareRevealElements(root) {
-        if (!revealObserver) return;
+    function animateWithGsap(element, index) {
+        element.classList.add('is-revealed');
+        if (window.gsap) {
+            gsap.fromTo(element, 
+                { opacity: 0, y: 16 },
+                { opacity: 1, y: 0, duration: 0.4, ease: 'power1.out' }
+            );
+        }
+    }
 
+    function prepareRevealElements(root) {
         var scope = root && root.querySelectorAll ? root : document;
         var selectors = [
             '[data-reveal]',
@@ -59,24 +67,35 @@
             if (element.dataset.revealObserved === 'true') return;
             element.dataset.revealObserved = 'true';
             element.classList.add('js-reveal-ready');
-            element.style.setProperty('--reveal-delay', Math.min(index % 4, 3) * 70 + 'ms');
-            revealObserver.observe(element);
+
+            if (revealObserver) {
+                element.dataset.revealIndex = index;
+                revealObserver.observe(element);
+            } else {
+                element.classList.add('is-revealed');
+            }
         });
     }
 
     function setupReveal() {
-        if (!('IntersectionObserver' in window)
-            || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
             return;
         }
 
-        revealObserver = new IntersectionObserver(function (entries) {
-            entries.forEach(function (entry) {
-                if (!entry.isIntersecting) return;
-                entry.target.classList.add('is-revealed');
-                revealObserver.unobserve(entry.target);
-            });
-        }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+        if (window.gsap && window.ScrollTrigger) {
+            window.gsap.registerPlugin(window.ScrollTrigger);
+        }
+
+        if ('IntersectionObserver' in window) {
+            revealObserver = new IntersectionObserver(function (entries) {
+                entries.forEach(function (entry) {
+                    if (!entry.isIntersecting) return;
+                    var idx = parseInt(entry.target.dataset.revealIndex || '0', 10);
+                    animateWithGsap(entry.target, idx);
+                    revealObserver.unobserve(entry.target);
+                });
+            }, { rootMargin: '0px 0px -6% 0px', threshold: 0.05 });
+        }
 
         prepareRevealElements(document);
 

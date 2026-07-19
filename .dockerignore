@@ -7,3 +7,6 @@
 **/*.user
 **/*.suo
 HACKATHON NETT.pdf
+# MP4 fonte da landing cinematografica (~70 MB): insumo de producao, nao entra em
+# imagem alguma. Os quadros publicados ficam em src/.../wwwroot/cinematic/.
+assets/cinematic/source

@@ -1105,8 +1105,10 @@
 .cine-wrap:not(.is-live) .cine-o5 { background-image: url('cinematic/desktop/frame-0305.webp'); }
 
 /* ---- Modo cinematográfico ---- */
+/* 760vh para 620 quadros: ~11px de rolagem por quadro numa tela de 900px. Menos que isso
+   e a roda do mouse pula quadros demais; muito mais e a história fica arrastada. */
 .cine-wrap.is-live {
-    height: 620vh; /* precisa casar com SCROLL_LENGTH_VH do cinematic.js */
+    height: 1600vh;
 }
 
 .cine-wrap.is-live .cine-stage {
@@ -1114,6 +1116,8 @@
     top: 0;
     height: 100vh;
     overflow: hidden;
+    /* A cena encosta no topo da viewport e passa por trás do header transparente. */
+    margin-top: calc(-1 * var(--cs-header-h, 78px));
 }
 
 .cine-wrap.is-live .cine-canvas {
@@ -1136,10 +1140,13 @@
 
 .cine-wrap.is-live .cine-overlay {
     position: absolute;
-    top: 50%;
+    /* Centralizado na faixa ABAIXO do header, e não na viewport inteira — assim blocos
+       altos não escorregam para trás do menu. --cine-shift é o micro-deslocamento de
+       entrada/saída escrito pelo JS (ver cinematic.js). */
+    top: calc(var(--cs-header-h, 78px) + (100vh - var(--cs-header-h, 78px)) / 2);
     left: 0;
-    transform: translateY(-50%);
-    width: min(620px, 92vw);
+    transform: translateY(calc(-50% + var(--cine-shift, 0px)));
+    width: min(880px, 92vw);
     max-width: none;
     margin: 0;
     padding: 0 0 0 clamp(24px, 6vw, 84px);
@@ -1149,12 +1156,43 @@
     background: none !important;
     box-shadow: none;
     min-height: 0;
+    /* Nunca ultrapassa a faixa útil: se o conteúdo for maior, ele rola dentro de si. */
+    max-height: calc(100vh - var(--cs-header-h, 78px) - 24px);
+    overflow-y: auto;
+    scrollbar-width: none;
 }
 
+.cine-wrap.is-live .cine-overlay::-webkit-scrollbar { display: none; }
+
+/* O bloco final acumula logo + título + lead + foto + CTAs: empilhado passava de 900px e
+   transbordava a viewport. No modo cinematográfico ele vira duas colunas compactas. */
 .cine-wrap.is-live .cine-o5 {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+        "logo   logo"
+        "titulo foto"
+        "lead   foto"
+        "acoes  foto";
+    align-items: start;
+    gap: 6px 22px;
+    width: min(760px, 94vw);
+}
+
+.cine-wrap.is-live .cine-o5 .cine-final__logo-area { grid-area: logo; width: min(260px, 52vw); }
+.cine-wrap.is-live .cine-o5 .cine-h2 { grid-area: titulo; align-self: end; }
+.cine-wrap.is-live .cine-o5 .cine-lead { grid-area: lead; }
+.cine-wrap.is-live .cine-o5 .cine-actions { grid-area: acoes; margin-top: 14px; }
+.cine-wrap.is-live .cine-o5 .cine-campaign { grid-area: foto; max-width: 260px; margin-top: 4px; }
+.cine-wrap.is-live .cine-o5 .cine-campaign img { aspect-ratio: 4 / 3; }
+
+@media (max-width: 900px) {
+    .cine-wrap.is-live .cine-o5 {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas: "logo" "titulo" "lead" "acoes";
+    }
+    /* Sem espaço vertical no celular, a foto da campanha sai: a mensagem e o CTA mandam. */
+    .cine-wrap.is-live .cine-o5 .cine-campaign { display: none; }
 }
 
 /* Logo sobre a tela do notebook (quadro 1). Dissolve/re-forma via JS. */
@@ -1186,10 +1224,11 @@
     .cine-wrap.is-live .cine-overlay {
         top: auto;
         bottom: 7vh;
-        transform: none;
+        transform: translateY(var(--cine-shift, 0px));
         padding-left: 20px;
         padding-right: 20px;
         width: 100vw;
+        max-height: calc(93vh - var(--cs-header-h, 78px));
     }
 
     .cine-stats { grid-template-columns: 1fr; max-width: 100%; }

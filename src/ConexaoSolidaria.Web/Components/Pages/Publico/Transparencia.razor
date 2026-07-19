@@ -11,7 +11,7 @@
 <header class="cs-page-header">
     <div class="cs-page-header__content">
         <span class="cs-page-header__badge">
-            <MudIcon Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" />
+            <MudIcon Icon="@Icons.Material.Rounded.Visibility" Size="Size.Small" />
             Prestação de contas
         </span>
         <h1 class="cs-page-header__title">Portal de <span>Transparência</span></h1>
@@ -21,50 +21,30 @@
     </div>
 </header>
 
-@* ---------------- Cartoes de indicadores ---------------- *@
+@* ---------------- Indicadores estilo Index (fluidos, sem blocos) ---------------- *@
 <div class="cs-tp-stats">
     <div class="cs-tp-stat">
-        <span class="cs-tp-stat__icon cs-tp-stat__icon--blue">
-            <MudIcon Icon="@Icons.Material.Filled.Campaign" />
-        </span>
-        <div class="cs-tp-stat__body">
-            <span class="cs-tp-stat__label">Campanhas Ativas</span>
-            <span class="cs-tp-stat__value">@(_loading ? "—" : _totalAtivas.ToString("N0", Ptbr))</span>
-            <span class="cs-tp-stat__hint">ativas agora</span>
-        </div>
+        <span class="cs-tp-stat__value">@(_loading ? "—" : _totalAtivas.ToString("N0", Ptbr))</span>
+        <span class="cs-tp-stat__label">Campanhas Ativas</span>
+        <span class="cs-tp-stat__hint">ativas agora</span>
+    </div>
+
+    <div class="cs-tp-stat cs-tp-stat--accent">
+        <span class="cs-tp-stat__value">@(_loading ? "—" : Money(_totalArrecadado))</span>
+        <span class="cs-tp-stat__label">Total Arrecadado</span>
+        <span class="cs-tp-stat__hint">com a sua ajuda</span>
     </div>
 
     <div class="cs-tp-stat">
-        <span class="cs-tp-stat__icon cs-tp-stat__icon--orange">
-            <MudIcon Icon="@Icons.Material.Filled.AttachMoney" />
-        </span>
-        <div class="cs-tp-stat__body">
-            <span class="cs-tp-stat__label">Total Arrecadado</span>
-            <span class="cs-tp-stat__value">@(_loading ? "—" : Money(_totalArrecadado))</span>
-            <span class="cs-tp-stat__hint">com a sua ajuda</span>
-        </div>
+        <span class="cs-tp-stat__value">@(_loading ? "—" : _totalDoadores.ToString("N0", Ptbr))</span>
+        <span class="cs-tp-stat__label">Doadores</span>
+        <span class="cs-tp-stat__hint">pessoas engajadas</span>
     </div>
 
     <div class="cs-tp-stat">
-        <span class="cs-tp-stat__icon cs-tp-stat__icon--blue">
-            <MudIcon Icon="@Icons.Material.Filled.Groups" />
-        </span>
-        <div class="cs-tp-stat__body">
-            <span class="cs-tp-stat__label">Doadores</span>
-            <span class="cs-tp-stat__value">@(_loading ? "—" : _totalDoadores.ToString("N0", Ptbr))</span>
-            <span class="cs-tp-stat__hint">pessoas engajadas</span>
-        </div>
-    </div>
-
-    <div class="cs-tp-stat">
-        <span class="cs-tp-stat__icon cs-tp-stat__icon--green">
-            <MudIcon Icon="@Icons.Material.Filled.AccountBalance" />
-        </span>
-        <div class="cs-tp-stat__body">
-            <span class="cs-tp-stat__label">Campanhas no Total</span>
-            <span class="cs-tp-stat__value">@(_loading ? "—" : _totalCampanhas.ToString("N0", Ptbr))</span>
-            <span class="cs-tp-stat__hint">na plataforma</span>
-        </div>
+        <span class="cs-tp-stat__value">@(_loading ? "—" : _totalCampanhas.ToString("N0", Ptbr))</span>
+        <span class="cs-tp-stat__label">Campanhas no Total</span>
+        <span class="cs-tp-stat__hint">na plataforma</span>
     </div>
 </div>
 
@@ -75,10 +55,9 @@
         <form class="cs-tp-toolbar" @onsubmit="AplicarBusca" @onsubmit:preventDefault>
             <div class="cs-tp-search-row">
                 <label class="cs-tp-search">
-                    <span class="cs-tp-search__icon"><MudIcon Icon="@Icons.Material.Filled.Search" /></span>
+                    <span class="cs-tp-search__icon"><MudIcon Icon="@Icons.Material.Rounded.Search" /></span>
                     <span class="cs-tp-search__field">
                         <span>Pesquisar campanha</span>
-                        @* Busca no servidor (Elasticsearch): tolera erro de digitação e acento. *@
                         <input type="search"
                                placeholder="Busque por título, causa ou categoria — tolera erros de digitação"
                                value="@_q"
@@ -91,7 +70,7 @@
 
             <div class="cs-tp-filter-row">
                 <span class="cs-tp-filter-row__label">
-                    <MudIcon Icon="@Icons.Material.Filled.Tune" Size="Size.Small" />
+                    <MudIcon Icon="@Icons.Material.Rounded.Tune" Size="Size.Small" />
                     Refinar resultados
                 </span>
 
@@ -104,7 +83,7 @@
                             <option value="@value" selected="@(string.Equals(_categoria, value, StringComparison.OrdinalIgnoreCase))">@label</option>
                         }
                     </select>
-                    <MudIcon Icon="@Icons.Material.Filled.ExpandMore" Size="Size.Small" />
+                    <MudIcon Icon="@Icons.Material.Rounded.ExpandMore" Size="Size.Small" />
                 </label>
 
                 <label class="cs-tp-select">
@@ -115,13 +94,13 @@
                             <option value="@value" selected="@(string.Equals(_ordenar, value, StringComparison.OrdinalIgnoreCase))">@label</option>
                         }
                     </select>
-                    <MudIcon Icon="@Icons.Material.Filled.ExpandMore" Size="Size.Small" />
+                    <MudIcon Icon="@Icons.Material.Rounded.ExpandMore" Size="Size.Small" />
                 </label>
 
                 @if (TemFiltroAtivo)
                 {
                     <button type="button" class="cs-tp-filtros" @onclick="LimparFiltros">
-                        <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" />
+                        <MudIcon Icon="@Icons.Material.Rounded.Close" Size="Size.Small" />
                         Limpar filtros
                     </button>
                 }
@@ -135,22 +114,22 @@
         }
         else if (_error)
         {
-            <EmptyState Icon="@Icons.Material.Filled.CloudOff"
-                        Title="Nao foi possivel carregar os dados"
+            <EmptyState Icon="@Icons.Material.Rounded.CloudOff"
+                        Title="Não foi possível carregar os dados"
                         Description="Ocorreu um erro ao consultar a API. Tente novamente em instantes.">
                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                           StartIcon="@Icons.Material.Filled.Refresh" OnClick="Recarregar">
+                           StartIcon="@Icons.Material.Rounded.Refresh" OnClick="Recarregar">
                     Tentar novamente
                 </MudButton>
             </EmptyState>
         }
         else if (_view.Count == 0)
         {
-            <EmptyState Icon="@Icons.Material.Filled.SearchOff"
+            <EmptyState Icon="@Icons.Material.Rounded.SearchOff"
                         Title="Nenhuma campanha encontrada"
                         Description="@(TemFiltroAtivo
                             ? "Ajuste os filtros para ver mais campanhas ativas."
-                            : "Quando houver campanhas ativas, elas aparecerao aqui.")" />
+                            : "Quando houver campanhas ativas, elas aparecerão aqui.")" />
         }
         else
         {
@@ -195,11 +174,11 @@
         }
     </section>
 
-    @* -------- Barra lateral de confianca -------- *@
+    @* -------- Barra lateral de confiança -------- *@
     <aside class="cs-tp-side" aria-label="Nosso compromisso">
         <div class="cs-tp-side__head">
             <span class="cs-tp-side__badge">
-                <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" />
+                <MudIcon Icon="@Icons.Material.Rounded.VerifiedUser" />
             </span>
             <h2 class="cs-tp-side__title">Transparência que gera confiança</h2>
         </div>
@@ -209,21 +188,21 @@
 
         <ul class="cs-tp-side__list">
             <li>
-                <span class="cs-tp-side__ico"><MudIcon Icon="@Icons.Material.Filled.TrendingUp" Size="Size.Small" /></span>
+                <span class="cs-tp-side__ico"><MudIcon Icon="@Icons.Material.Rounded.TrendingUp" Size="Size.Small" /></span>
                 <div>
                     <strong>Atualizações em tempo real</strong>
                     <span>Os valores arrecadados são atualizados continuamente.</span>
                 </div>
             </li>
             <li>
-                <span class="cs-tp-side__ico"><MudIcon Icon="@Icons.Material.Filled.Favorite" Size="Size.Small" /></span>
+                <span class="cs-tp-side__ico"><MudIcon Icon="@Icons.Material.Rounded.Favorite" Size="Size.Small" /></span>
                 <div>
                     <strong>Recursos com propósito</strong>
                     <span>Cada doação é destinada a campanhas ativas e verificadas.</span>
                 </div>
             </li>
             <li>
-                <span class="cs-tp-side__ico"><MudIcon Icon="@Icons.Material.Filled.Groups" Size="Size.Small" /></span>
+                <span class="cs-tp-side__ico"><MudIcon Icon="@Icons.Material.Rounded.Groups" Size="Size.Small" /></span>
                 <div>
                     <strong>Impacto que transforma</strong>
                     <span>Acompanhe resultados que mostram o poder da solidariedade.</span>
@@ -232,7 +211,7 @@
         </ul>
 
         <blockquote class="cs-tp-side__quote">
-            <MudIcon Icon="@Icons.Material.Filled.FormatQuote" Size="Size.Small" />
+            <MudIcon Icon="@Icons.Material.Rounded.FormatQuote" Size="Size.Small" />
             A transparência não é apenas um valor, é o que nos conecta a você.
         </blockquote>
     </aside>

@@ -15,10 +15,10 @@
 <div class="cs-scroll-progress" aria-hidden="true"></div>
 
 <div class="cs-app-shell">
-    <header class="cs-site-header">
+    <header class="cs-site-header @(IsIndexPage ? "cs-site-header--index" : string.Empty)">
         <div class="cs-site-header__inner">
-            <a class="cs-brand" href="/" aria-label="Conexao Solidaria - pagina inicial">
-                <img src="images/logo/logomarca-horizontal.png" alt="Conexao Solidaria" />
+            <a class="cs-brand" href="/" aria-label="Conexão Solidária - página inicial">
+                <img src="images/logo/logomarca-horizontal.png" alt="Conexão Solidária" />
             </a>
 
             <div class="cs-site-header__desktop-nav">
@@ -61,7 +61,7 @@
                 <AuthorizeView>
                     <Authorized>
                         <div class="cs-mobile-panel__account">
-                            <span>Ola, @(context.User.Identity?.Name ?? "usuario")</span>
+                            <span>Olá, @(context.User.Identity?.Name ?? "usuário")</span>
                             <button type="button" @onclick="LogoutAsync">Sair</button>
                         </div>
                     </Authorized>
@@ -78,7 +78,7 @@
 
     <main id="conteudo-principal" class="cs-main-content" tabindex="-1">
         <div class="cs-page-container">
-            @* @key muda a cada navegacao: recria a subarvore e reexecuta a animacao de entrada. *@
+            @* @key muda a cada navegação: recria a subárvore e reexecuta a animação de entrada. *@
             <div class="cs-page-transition" @key="_navKey">
                 @Body
             </div>
@@ -104,6 +104,15 @@
     private bool _mobileMenuOpen;
     private int _navKey;
 
+    private bool IsIndexPage
+    {
+        get
+        {
+            var rel = Navigation.ToBaseRelativePath(Navigation.Uri);
+            return string.IsNullOrEmpty(rel) || rel.StartsWith('#') || rel.StartsWith('?');
+        }
+    }
+
     private void ToggleMobileMenu() => _mobileMenuOpen = !_mobileMenuOpen;
 
     private void CloseMobileMenu() => _mobileMenuOpen = false;
@@ -114,7 +123,6 @@
         Navigation.LocationChanged += OnLocationChanged;
     }
 
-    // Cada navegacao troca a @key da area de conteudo, disparando a transicao de tela.
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
         _navKey++;

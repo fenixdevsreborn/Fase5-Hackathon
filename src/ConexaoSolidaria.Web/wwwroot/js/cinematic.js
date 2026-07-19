@@ -1,24 +1,20 @@
 // Landing cinematográfica "O Laço" — sequência de quadros no canvas dirigida pelo scroll.
 // Módulo ES carregado sob demanda pela Landing (OnAfterRenderAsync) e destruído no Dispose.
-// GSAP/ScrollTrigger/Lenis são carregados dinamicamente (arquivos locais em lib/), para não
-// pesar nas demais páginas. Com prefers-reduced-motion o módulo nem inicializa (fallback CSS).
+// GSAP/ScrollTrigger/Lenis vêm de arquivos locais em lib/. Com prefers-reduced-motion o
+// módulo nem inicializa (fallback CSS estático).
+//
+// Decisões de performance (o que fazia a cena travar/pular):
+//  - ImageBitmap via createImageBitmap(): decodifica FORA da main thread. Com <img> o
+//    decode acontecia no primeiro drawImage, travando o scroll.
+//  - Desenho num loop de rAF, só quando o índice muda — o onUpdate do ScrollTrigger
+//    dispara muito mais vezes que a taxa de quadros útil.
+//  - Lenis com `lerp` (resposta proporcional) em vez de `duration` (que arrastava).
 
-const FPS = 10;
-// Clipes: 6s + 7s + 6s + 6s + 6s = 31s -> 310 quadros, numerados globalmente 0001..0310.
-const SEGMENTS = [60, 130, 190, 250, 310];
+// 20 fps: a 10 fps cada quadro saltava 0,1s de vídeo e a rolagem parecia stop-motion.
+const FPS = 20;
+// Quadros por clipe (6s, 7s, 6s, 6s, 6s a 20 fps), acumulados. Numeração global 0001..0620.
+const SEGMENTS = [120, 260, 380, 500, 620];
 const TOTAL_FRAMES = SEGMENTS[SEGMENTS.length - 1];
-const SCROLL_LENGTH_VH = 620; // altura total da rolagem da cena (por viewport)
-
-// Faixas de progresso (0..1) de cada camada de texto e da logo.
-const RANGES = {
-    logoDissolve: [0.02, 0.12],
-    overlay1: [0.00, 0.15],   // hero
-    overlay2: [0.17, 0.36],   // selos + confiabilidade
-    overlay3: [0.39, 0.55],   // como funciona
-    overlay4: [0.58, 0.75],   // impacto + instituições
-    overlay5: [0.86, 1.00],   // final: sobre + logo re-formada + campanha + CTA
-    logoReform: [0.88, 0.97],
-};
 
 let loadedLibs = null;
 
@@ -43,8 +39,23 @@ async function ensureLibs() {
     return loadedLibs;
 }
 
-function frameUrl(dir, index) {
-    return `cinematic/${dir}/frame-${String(index + 1).padStart(4, '0')}.webp`;
+// Progresso normalizado (0..1) do início e do fim de cada clipe. Os textos são
+// posicionados a partir daqui, então a sincronia acompanha automaticamente qualquer
+// mudança de FPS ou de duração — nada de faixas escritas à mão.
+function clipBounds(i) {
+    const from = i === 0 ? 0 : SEGMENTS[i - 1];
+    const to = SEGMENTS[i];
+    return [from / (TOTAL_FRAMES - 1), (to - 1) / (TOTAL_FRAMES - 1)];
+}
+
+// Faixa de exibição do texto dentro do clipe: entra logo após o corte e sai antes do
+// próximo, para nunca haver dois textos no mesmo quadro.
+function overlayRange(i) {
+    const [a, b] = clipBounds(i);
+    const span = b - a;
+    if (i === 0) return [a, b];
+    if (i === SEGMENTS.length - 1) return [a + span * 0.10, 1];
+    return [a + span * 0.08, b - span * 0.06];
 }
 
 export async function init(stageId) {
@@ -59,25 +70,27 @@ export async function init(stageId) {
     const wrap = stage.parentElement;
 
     const { gsap, ScrollTrigger, Lenis } = await ensureLibs();
-    wrap.classList.add('is-live'); // ativa o layout cinematográfico (CSS)
+    wrap.classList.add('is-live');                       // layout cinematográfico (CSS)
+    document.documentElement.classList.add('cine-page'); // header transparente sobre a cena
 
     const canvas = stage.querySelector('.cine-canvas');
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { alpha: false });
     const dir = Math.min(window.innerWidth, window.innerHeight * 1.78) <= 900 ? 'mobile' : 'desktop';
 
-    // ---- Carregamento progressivo dos quadros -------------------------------------------
-    const images = new Array(TOTAL_FRAMES).fill(null);
-    const ready = new Array(TOTAL_FRAMES).fill(false);
+    // ---- Carregamento dos quadros (ImageBitmap: decode fora da main thread) -------------
+    const frames = new Array(TOTAL_FRAMES).fill(null);
     let disposed = false;
 
-    function loadFrame(i) {
-        return new Promise(resolve => {
-            if (disposed || ready[i]) return resolve();
-            const img = new Image();
-            img.onload = () => { images[i] = img; ready[i] = true; resolve(); };
-            img.onerror = () => resolve(); // quadro faltando não trava a cena
-            img.src = frameUrl(dir, i);
-        });
+    async function loadFrame(i) {
+        if (disposed || frames[i]) return;
+        try {
+            const url = `cinematic/${dir}/frame-${String(i + 1).padStart(4, '0')}.webp`;
+            const res = await fetch(url);
+            if (!res.ok) return;
+            const bmp = await createImageBitmap(await res.blob());
+            if (disposed) { bmp.close?.(); return; }
+            frames[i] = bmp;
+        } catch { /* quadro faltando não trava a cena */ }
     }
 
     async function loadRange(from, to, chunk) {
@@ -88,136 +101,178 @@ export async function init(stageId) {
         }
     }
 
-    // Segmento 1 bloqueia a revelação da hero; o resto em background.
-    await loadRange(0, SEGMENTS[0], 10);
+    // O primeiro clipe bloqueia a revelação da hero; o resto entra em background.
+    await loadRange(0, SEGMENTS[0], 12);
     stage.classList.add('cine-ready');
-    const backgroundLoad = loadRange(SEGMENTS[0], TOTAL_FRAMES, 6);
+    const backgroundLoad = loadRange(SEGMENTS[0], TOTAL_FRAMES, 8);
 
-    // ---- Canvas -------------------------------------------------------------------------
+    // ---- Canvas ------------------------------------------------------------------------
+    let lastDrawn = -1;
+
     function resize() {
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         canvas.width = Math.round(canvas.clientWidth * dpr);
         canvas.height = Math.round(canvas.clientHeight * dpr);
-        draw(state.frame);
+        lastDrawn = -1;               // força repintura no novo tamanho
+        drawIndex(currentIndex());
     }
 
     function nearestReady(i) {
-        if (ready[i]) return i;
+        if (frames[i]) return i;
         for (let d = 1; d < TOTAL_FRAMES; d++) {
-            if (i - d >= 0 && ready[i - d]) return i - d;
-            if (i + d < TOTAL_FRAMES && ready[i + d]) return i + d;
+            if (i - d >= 0 && frames[i - d]) return i - d;
+            if (i + d < TOTAL_FRAMES && frames[i + d]) return i + d;
         }
         return -1;
     }
 
-    function draw(frameFloat) {
-        const idx = nearestReady(Math.max(0, Math.min(TOTAL_FRAMES - 1, Math.round(frameFloat))));
-        if (idx < 0) return;
-        const img = images[idx];
+    function drawIndex(target) {
+        const idx = nearestReady(target);
+        if (idx < 0 || idx === lastDrawn) return;
+        const bmp = frames[idx];
         const cw = canvas.width, ch = canvas.height;
         if (!cw || !ch) return;
-        // cover fit
-        const scale = Math.max(cw / img.width, ch / img.height);
-        const w = img.width * scale, h = img.height * scale;
-        ctx.drawImage(img, (cw - w) / 2, (ch - h) / 2, w, h);
+        const scale = Math.max(cw / bmp.width, ch / bmp.height);   // cover
+        const w = bmp.width * scale, h = bmp.height * scale;
+        ctx.drawImage(bmp, (cw - w) / 2, (ch - h) / 2, w, h);
+        lastDrawn = idx;
     }
 
-    const state = { frame: 0 };
+    const state = { progress: 0 };
+    const currentIndex = () =>
+        Math.max(0, Math.min(TOTAL_FRAMES - 1, Math.round(state.progress * (TOTAL_FRAMES - 1))));
+
     window.addEventListener('resize', resize);
     resize();
 
-    // ---- Lenis + ScrollTrigger ----------------------------------------------------------
-    const lenis = new Lenis({ duration: dir === 'mobile' ? 0.9 : 1.25, smoothWheel: true });
-    lenis.on('scroll', ScrollTrigger.update);
-    gsap.ticker.add(t => lenis.raf(t * 1000));
-    gsap.ticker.lagSmoothing(0);
+    // ---- ScrollTrigger com Lenis e Inércia Suave (scrub: 0.8) -----------------------
+    let lenis = null;
+    if (Lenis) {
+        try {
+            lenis = new Lenis({
+                lerp: 0.08,
+                smoothWheel: true,
+                syncTouch: true
+            });
+            lenis.on('scroll', ScrollTrigger.update);
+            function lenisRaf(time) {
+                if (!disposed && lenis) {
+                    lenis.raf(time);
+                    requestAnimationFrame(lenisRaf);
+                }
+            }
+            requestAnimationFrame(lenisRaf);
+        } catch { /* fallback para scroll nativo suave */ }
+    }
 
-    // O stage fica preso por CSS `position: sticky` (imune a ancestrais com transform,
-    // que quebrariam o pin/fixed do ScrollTrigger). O trigger só rastreia o progresso.
+    window.addEventListener('scroll', () => ScrollTrigger.update(), { passive: true });
+
+    // O stage é preso por CSS `position: sticky`. O scrub suaviza transições entre quadros.
     const pinTrigger = ScrollTrigger.create({
-        trigger: wrap,                         // wrapper alto (define a duração da rolagem)
+        trigger: wrap,
         start: 'top top',
         end: 'bottom bottom',
-        scrub: true,
+        scrub: 0.8,
         onUpdate: self => {
-            state.frame = self.progress * (TOTAL_FRAMES - 1);
-            draw(state.frame);
-            updateLayers(self.progress);
+            state.progress = self.progress;
+            document.documentElement.classList.toggle('cine-over-stage', self.progress < 0.97);
         },
     });
 
-    // ---- Camadas: logo e textos ---------------------------------------------------------
+    let rafId = 0;
+    function tick() {
+        if (disposed) return;
+        drawIndex(currentIndex());
+        updateLayers(state.progress);
+        rafId = requestAnimationFrame(tick);
+    }
+    rafId = requestAnimationFrame(tick);
+
+    // ---- Camadas: logo e textos --------------------------------------------------------
     const logoScreen = stage.querySelector('.cine-logo--screen');
     const logoFinal = stage.querySelector('.cine-logo--final');
+    const finalBlock = stage.querySelector('.cine-final');
     const overlays = [1, 2, 3, 4, 5].map(n => stage.querySelector('.cine-o' + n));
+    const ranges = overlays.map((_, i) => overlayRange(i));
 
-    function bandProgress(p, [a, b]) {
+    // A logo some na primeira metade do clipe 1 e volta no fecho do clipe 5.
+    const [c1a, c1b] = clipBounds(0);
+    const [c5a, c5b] = clipBounds(SEGMENTS.length - 1);
+    const LOGO_DISSOLVE = [c1a + (c1b - c1a) * 0.06, c1a + (c1b - c1a) * 0.55];
+    const LOGO_REFORM = [c5a + (c5b - c5a) * 0.45, c5a + (c5b - c5a) * 0.92];
+
+    function band(p, [a, b]) {
         if (p <= a) return 0;
         if (p >= b) return 1;
         return (p - a) / (b - a);
     }
 
+    // Progresso linear simples (sem curva que começa lenta e acelera)
+    const linear = t => Math.max(0, Math.min(1, t));
+
+    let lastLayers = -1;
     function updateLayers(p) {
-        // Logo na tela do notebook: nítida no repouso, dissolve em luz ao rolar (reversível).
+        if (Math.abs(p - lastLayers) < 0.0003) return;
+        lastLayers = p;
+
         if (logoScreen) {
-            const d = bandProgress(p, RANGES.logoDissolve);
+            const d = linear(band(p, LOGO_DISSOLVE));
             logoScreen.style.opacity = String(1 - d);
-            logoScreen.style.filter = `blur(${d * 26}px) brightness(${1 + d * 2.2})`;
-            logoScreen.style.transform = `translate(-50%,-50%) scale(${1 + d * 0.55})`;
+            logoScreen.style.transform = `translate(-50%,-50%) scale(${1 + d * 0.4})`;
         }
-        // Logo final: re-forma a partir da luz (inverso), depois o loop ambiente assume.
         if (logoFinal) {
-            const r = bandProgress(p, RANGES.logoReform);
+            const r = linear(band(p, LOGO_REFORM));
             logoFinal.style.opacity = String(r);
-            logoFinal.style.filter = `blur(${(1 - r) * 24}px) brightness(${1 + (1 - r) * 2})`;
-            logoFinal.style.transform = `translate(-50%,0) scale(${0.6 + r * 0.4})`;
-            logoFinal.closest('.cine-final')?.classList.toggle('is-live', r > 0.98);
+            logoFinal.style.transform = `translate(-50%,0) scale(${0.7 + r * 0.3})`;
+            finalBlock?.classList.toggle('is-live', r > 0.98);
         }
+
         overlays.forEach((el, i) => {
             if (!el) return;
-            const key = 'overlay' + (i + 1);
-            const [a, b] = RANGES[key];
-            // A hero (i=0) já nasce visível no repouso; as demais entram em fade.
-            const inP = i === 0 ? 1 : bandProgress(p, [a, Math.min(a + 0.045, b)]);
-            const outP = i === overlays.length - 1 ? 0 : bandProgress(p, [Math.max(b - 0.045, a), b]);
+            const [a, b] = ranges[i];
+            const span = Math.max(b - a, 0.001);
+            const fade = Math.min(span * 0.3, 0.07);
+            const inP = i === 0 ? 1 : linear(band(p, [a, a + fade]));
+            const outP = i === overlays.length - 1 ? 0 : linear(band(p, [b - fade, b]));
             const vis = inP * (1 - outP);
             el.style.opacity = String(vis);
-            el.style.transform = `translateY(${(1 - inP) * 28 - outP * 22}px)`;
-            el.style.pointerEvents = vis > 0.55 ? 'auto' : 'none';
+            el.style.setProperty('--cine-shift', `${(1 - inP) * 18 - outP * 14}px`);
+            el.style.pointerEvents = vis > 0.4 ? 'auto' : 'none';
         });
     }
 
     updateLayers(0);
     ScrollTrigger.refresh();
 
-    // Âncoras (/#como-funciona etc.): o browser pula antes de o wrapper ganhar a altura
-    // cinematográfica — reposiciona depois que o layout final existe.
+    // Âncoras (/#como-funciona etc.): reposiciona na tela
     function scrollToHash() {
         if (!location.hash) return;
         let target = null;
         try { target = document.querySelector(location.hash); } catch { return; }
         if (!target || !wrap.contains(target)) return;
         const y = Math.max(0, target.getBoundingClientRect().top + window.scrollY - 90);
-        lenis.scrollTo(y, { immediate: true });
+        window.scrollTo({ top: y, behavior: 'instant' });
         ScrollTrigger.update();
     }
 
     scrollToHash();
     window.addEventListener('hashchange', scrollToHash);
 
-    // ---- API para o Blazor --------------------------------------------------------------
+    // ---- API para o Blazor -------------------------------------------------------------
     return {
         destroy() {
             disposed = true;
+            try { lenis?.destroy(); } catch {}
+            cancelAnimationFrame(rafId);
             window.removeEventListener('resize', resize);
             window.removeEventListener('hashchange', scrollToHash);
             pinTrigger.kill();
             ScrollTrigger.getAll().forEach(t => t.kill());
-            gsap.ticker.remove(lenis.raf);
-            lenis.destroy();
-            images.fill(null);
+            frames.forEach(b => b?.close?.());   // libera a memória dos bitmaps
+            frames.fill(null);
             wrap.classList.remove('is-live');
             stage.classList.remove('cine-ready');
+            document.documentElement.classList.remove('cine-page', 'cine-over-stage');
             void backgroundLoad;
         },
     };
