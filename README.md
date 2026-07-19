@@ -7,6 +7,7 @@ MVP para o desafio do hackathon da ONG Esperanca Solidaria. A solucao usa .NET 1
 - `Identity.Api`: cadastro de doadores, login e emissao de JWT.
 - `Campaigns.Api`: gestao de campanhas, painel publico de transparencia, busca fuzzy por titulo via Elasticsearch e criacao de intencao de doacao.
 - `Donations.Worker`: consumidor RabbitMQ que processa doacoes e atualiza o valor arrecadado.
+- `ConexaoSolidaria.Web`: frontend React/TypeScript com vitrine publica, autenticacao, doacao e gestao de campanhas.
 - `PostgreSQL`: `identitydb`, `campaignsdb` e `zabbixdb`.
 - `Elasticsearch`: indice `conexao-solidaria-campanhas` para busca tolerante a erros de digitacao no titulo das campanhas.
 - `RabbitMQ`: fila `doacoes-recebidas` com exchange `conexao-solidaria`.
@@ -29,6 +30,7 @@ Servicos:
 
 - Identity Swagger: http://localhost:5001/swagger
 - Campaigns Swagger: http://localhost:5002/swagger
+- Frontend: http://localhost:5173
 - Worker health: http://localhost:5003/health
 - Elasticsearch: http://localhost:9200
 - RabbitMQ: http://localhost:15672 (`guest` / `guest`)
@@ -59,7 +61,25 @@ Usuario gestor criado no seed:
 
 ```powershell
 dotnet test ConexaoSolidaria.slnx
+
+cd src/ConexaoSolidaria.Web
+npm ci
+npm run lint
+npm run test
+npm run build
 ```
+
+## Executar apenas o frontend em desenvolvimento
+
+Com as APIs iniciadas pelo Docker Compose nas portas `5001` e `5002`:
+
+```powershell
+cd src/ConexaoSolidaria.Web
+npm ci
+npm run dev
+```
+
+O Vite abre o frontend em http://localhost:5173 e encaminha as chamadas para as APIs, evitando configuracao adicional de CORS.
 
 ## Kubernetes no Docker Desktop
 

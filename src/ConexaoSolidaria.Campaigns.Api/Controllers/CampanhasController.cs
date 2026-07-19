@@ -174,7 +174,11 @@ public sealed class CampanhasController(CampaignsDbContext db, ICampaignSearchSe
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
             .Select(campaign => new TransparenciaCampanhaResponse(
+                campaign.Id,
                 campaign.Titulo,
+                campaign.Descricao,
+                campaign.DataInicio,
+                campaign.DataFim,
                 campaign.MetaFinanceira,
                 campaign.ValorTotalArrecadado))
             .ToListAsync(cancellationToken);
@@ -233,6 +237,9 @@ public sealed class CampanhasController(CampaignsDbContext db, ICampaignSearchSe
             {
                 campaign.Id,
                 campaign.Titulo,
+                campaign.Descricao,
+                campaign.DataInicio,
+                campaign.DataFim,
                 campaign.MetaFinanceira,
                 campaign.ValorTotalArrecadado
             })
@@ -244,7 +251,11 @@ public sealed class CampanhasController(CampaignsDbContext db, ICampaignSearchSe
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
             .Select(campaign => new TransparenciaCampanhaResponse(
+                campaign.Id,
                 campaign.Titulo,
+                campaign.Descricao,
+                campaign.DataInicio,
+                campaign.DataFim,
                 campaign.MetaFinanceira,
                 campaign.ValorTotalArrecadado))
             .ToList();

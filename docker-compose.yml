@@ -97,6 +97,16 @@ services:
       elasticsearch:
         condition: service_healthy
 
+  web:
+    build:
+      context: ./src/ConexaoSolidaria.Web
+      dockerfile: Dockerfile
+    ports:
+      - "5173:8080"
+    depends_on:
+      - identity-api
+      - campaigns-api
+
   donations-worker:
     build:
       context: .
