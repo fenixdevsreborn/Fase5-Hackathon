@@ -7,96 +7,287 @@
 
 <PageTitle>Portal de Transparencia - Conexao Solidaria</PageTitle>
 
-@* ---------------- Cabecalho ---------------- *@
-<header class="cs-page-header">
-    <div class="cs-page-header__content">
-        <span class="cs-page-header__badge">
-            <MudIcon Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" />
-            Prestação de contas
-        </span>
-        <h1 class="cs-page-header__title">Portal de <span>Transparência</span></h1>
-        <p class="cs-page-header__lead">
-            Acompanhe em tempo real nossas campanhas ativas e o valor que já foi arrecadado com a sua ajuda.
-        </p>
-    </div>
-</header>
+<div class="cs-tp">
 
-@* ---------------- Cartoes de indicadores ---------------- *@
-<div class="cs-tp-stats">
-    <div class="cs-tp-stat">
-        <span class="cs-tp-stat__icon cs-tp-stat__icon--blue">
-            <MudIcon Icon="@Icons.Material.Filled.Campaign" />
-        </span>
-        <div class="cs-tp-stat__body">
-            <span class="cs-tp-stat__label">Campanhas Ativas</span>
-            <span class="cs-tp-stat__value">@(_loading ? "—" : _totalAtivas.ToString("N0", Ptbr))</span>
-            <span class="cs-tp-stat__hint">ativas agora</span>
+    @* ---------------- Cabecalho ---------------- *@
+    <header class="cs-page-header">
+        <div class="cs-page-header__content">
+            <span class="cs-page-header__badge">
+                <MudIcon Icon="@Icons.Material.Rounded.Visibility" Size="Size.Small" />
+                Prestação de contas
+            </span>
+            <h1 class="cs-page-header__title">Portal de <span>Transparência</span></h1>
+            <p class="cs-page-header__lead">
+                Acompanhe em tempo real nossas campanhas ativas e o valor que já foi arrecadado com a sua ajuda.
+            </p>
         </div>
+    </header>
+
+    @* ---------------- Indicadores ---------------- *@
+    <div class="cs-tp-kpis">
+        <article class="cs-tp-kpi">
+            <span class="cs-tp-kpi__icon cs-tp-kpi__icon--blue">
+                <MudIcon Icon="@Icons.Material.Rounded.AttachMoney" />
+            </span>
+            <div class="cs-tp-kpi__body">
+                <span class="cs-tp-kpi__label">Total arrecadado</span>
+                <strong class="cs-tp-kpi__value">@(_loading ? "—" : Money(_totalArrecadado))</strong>
+                <span class="cs-tp-kpi__hint">em campanhas ativas</span>
+            </div>
+        </article>
+
+        <article class="cs-tp-kpi">
+            <span class="cs-tp-kpi__icon cs-tp-kpi__icon--violet">
+                <MudIcon Icon="@Icons.Material.Rounded.Flag" />
+            </span>
+            <div class="cs-tp-kpi__body">
+                <span class="cs-tp-kpi__label">Campanhas ativas</span>
+                <strong class="cs-tp-kpi__value">@(_loading ? "—" : _totalAtivas.ToString("N0", Ptbr))</strong>
+                <span class="cs-tp-kpi__hint">de @_totalCampanhas na plataforma</span>
+            </div>
+        </article>
+
+        <article class="cs-tp-kpi">
+            <span class="cs-tp-kpi__icon cs-tp-kpi__icon--green">
+                <MudIcon Icon="@Icons.Material.Rounded.Groups" />
+            </span>
+            <div class="cs-tp-kpi__body">
+                <span class="cs-tp-kpi__label">Doações processadas</span>
+                <strong class="cs-tp-kpi__value">@(_loading ? "—" : _doacoesProcessadas.ToString("N0", Ptbr))</strong>
+                <span class="cs-tp-kpi__hint">@_totalDoadores.ToString("N0", Ptbr) doadores engajados</span>
+            </div>
+        </article>
+
+        <article class="cs-tp-kpi">
+            <span class="cs-tp-kpi__icon cs-tp-kpi__icon--orange">
+                <MudIcon Icon="@Icons.Material.Rounded.EventAvailable" />
+            </span>
+            <div class="cs-tp-kpi__body">
+                <span class="cs-tp-kpi__label">Última atualização</span>
+                @* Data no valor, hora na dica: junto num só nível o texto quebra e desalinha a
+                   altura dos quatro cartões. *@
+                <strong class="cs-tp-kpi__value cs-tp-kpi__value--sm">
+                    @(_loading || _atualizadoEm is null ? "—" : _atualizadoEm.Value.ToLocalTime().ToString("dd/MM/yyyy", Ptbr))
+                </strong>
+                <span class="cs-tp-kpi__hint cs-tp-kpi__hint--live">
+                    <span class="cs-tp-dot"></span>
+                    @(_atualizadoEm is null ? "aguardando o worker" : $"às {_atualizadoEm.Value.ToLocalTime().ToString("HH:mm", Ptbr)} pelo worker")
+                </span>
+            </div>
+        </article>
     </div>
 
-    <div class="cs-tp-stat">
-        <span class="cs-tp-stat__icon cs-tp-stat__icon--orange">
-            <MudIcon Icon="@Icons.Material.Filled.AttachMoney" />
-        </span>
-        <div class="cs-tp-stat__body">
-            <span class="cs-tp-stat__label">Total Arrecadado</span>
-            <span class="cs-tp-stat__value">@(_loading ? "—" : Money(_totalArrecadado))</span>
-            <span class="cs-tp-stat__hint">com a sua ajuda</span>
-        </div>
-    </div>
-
-    <div class="cs-tp-stat">
-        <span class="cs-tp-stat__icon cs-tp-stat__icon--blue">
-            <MudIcon Icon="@Icons.Material.Filled.Groups" />
-        </span>
-        <div class="cs-tp-stat__body">
-            <span class="cs-tp-stat__label">Doadores</span>
-            <span class="cs-tp-stat__value">@(_loading ? "—" : _totalDoadores.ToString("N0", Ptbr))</span>
-            <span class="cs-tp-stat__hint">pessoas engajadas</span>
-        </div>
-    </div>
-
-    <div class="cs-tp-stat">
-        <span class="cs-tp-stat__icon cs-tp-stat__icon--green">
-            <MudIcon Icon="@Icons.Material.Filled.AccountBalance" />
-        </span>
-        <div class="cs-tp-stat__body">
-            <span class="cs-tp-stat__label">Campanhas no Total</span>
-            <span class="cs-tp-stat__value">@(_loading ? "—" : _totalCampanhas.ToString("N0", Ptbr))</span>
-            <span class="cs-tp-stat__hint">na plataforma</span>
-        </div>
-    </div>
-</div>
-
-@* ---------------- Corpo: tabela + barra lateral ---------------- *@
-<div class="cs-tp-grid">
-    <section class="cs-tp-main" aria-label="Campanhas ativas">
-        @* -------- Barra de filtros (route-driven) -------- *@
-        <form class="cs-tp-toolbar" @onsubmit="AplicarBusca" @onsubmit:preventDefault>
-            <div class="cs-tp-search-row">
-                <label class="cs-tp-search">
-                    <span class="cs-tp-search__icon"><MudIcon Icon="@Icons.Material.Filled.Search" /></span>
-                    <span class="cs-tp-search__field">
-                        <span>Pesquisar campanha</span>
-                        @* Busca no servidor (Elasticsearch): tolera erro de digitação e acento. *@
-                        <input type="search"
-                               placeholder="Busque por título, causa ou categoria — tolera erros de digitação"
-                               value="@_q"
-                               @oninput="@(e => _q = e.Value?.ToString() ?? string.Empty)"
-                               aria-label="Buscar campanhas" />
-                    </span>
-                    <button type="submit" class="cs-tp-search__submit">Buscar</button>
-                </label>
+    @if (_error)
+    {
+        <EmptyState Icon="@Icons.Material.Rounded.CloudOff"
+                    Title="Não foi possível carregar os dados"
+                    Description="Ocorreu um erro ao consultar a API. Tente novamente em instantes.">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Rounded.Refresh" OnClick="Recarregar">
+                Tentar novamente
+            </MudButton>
+        </EmptyState>
+    }
+    else
+    {
+        @* ---------------- Colunas: arrecadação por mês de início ---------------- *@
+        <section class="cs-tp-card cs-tp-card--chart" aria-labelledby="tp-meses">
+            <div class="cs-tp-card__head">
+                <div>
+                    <h2 id="tp-meses" class="cs-tp-card__title">Arrecadação ao longo dos meses</h2>
+                    <p class="cs-tp-card__sub">
+                        Doações processadas nos últimos 12 meses, somadas pelo mês em que entraram.
+                    </p>
+                </div>
             </div>
 
-            <div class="cs-tp-filter-row">
-                <span class="cs-tp-filter-row__label">
-                    <MudIcon Icon="@Icons.Material.Filled.Tune" Size="Size.Small" />
-                    Refinar resultados
-                </span>
+            @if (_loading)
+            {
+                <div class="cs-tp-chart-skeleton" aria-hidden="true"></div>
+            }
+            @* Janela inteira zerada: a API devolve os 12 pontos mesmo assim, entao o teste e a
+               escala — sem ela o cartao mostraria um eixo vazio em vez de dizer que nao ha dado. *@
+            else if (_meses.Count == 0 || _escalaMax <= 0m)
+            {
+                <p class="cs-tp-nodata">Ainda não há doações processadas para montar a série mensal.</p>
+            }
+            else
+            {
+                <div class="cs-tp-bars">
+                    @* Eixo Y: valores que os rótulos diretos não carregam. *@
+                    <div class="cs-tp-bars__axis" aria-hidden="true">
+                        @foreach (var t in _ticks)
+                        {
+                            <span class="cs-tp-bars__tick" style="bottom:@Css((double)(t / _escalaMax) * 100)%">
+                                <span class="cs-tp-bars__tick-label">@Compacto(t)</span>
+                                <span class="cs-tp-bars__grid"></span>
+                            </span>
+                        }
+                    </div>
+
+                    <ol class="cs-tp-bars__plot">
+                        @foreach (var m in _meses)
+                        {
+                            var pct = _escalaMax <= 0 ? 0 : (double)m.Valor / (double)_escalaMax * 100;
+                            <li class="cs-tp-bar @(m.Valor == _picoValor && m.Valor > 0 ? "is-peak" : "")" @key="m.Chave">
+                                <button type="button" class="cs-tp-bar__hit"
+                                        aria-label="@($"{m.Rotulo}: {Money(m.Valor)}")">
+                                    @* Mes sem doacao nao ganha o piso de 2px: um toco visivel diria
+                                       que entrou algum valor quando nao entrou nada. *@
+                                    <span class="cs-tp-bar__fill @(m.Valor > 0 ? "" : "cs-tp-bar__fill--zero")"
+                                          style="height:@Css(pct)%"></span>
+                                    <span class="cs-tp-bar__tip" role="tooltip">
+                                        <strong>@Money(m.Valor)</strong>
+                                        <small>@m.RotuloLongo · @m.Doacoes.ToString("N0", Ptbr) doaç@(m.Doacoes == 1 ? "ão" : "ões")</small>
+                                    </span>
+                                </button>
+                                @* Rótulo direto apenas no pico — o eixo e o tooltip carregam o resto. *@
+                                @if (m.Valor == _picoValor && m.Valor > 0)
+                                {
+                                    <span class="cs-tp-bar__peak" style="bottom:@Css(pct)%">@Compacto(m.Valor)</span>
+                                }
+                                <span class="cs-tp-bar__label">@m.Rotulo</span>
+                            </li>
+                        }
+                    </ol>
+                </div>
+            }
+        </section>
+
+        <div class="cs-tp-duo">
+            @* ---------------- Rosca: distribuição por categoria ---------------- *@
+            <section class="cs-tp-card" aria-labelledby="tp-categorias">
+                <div class="cs-tp-card__head">
+                    <div>
+                        <h2 id="tp-categorias" class="cs-tp-card__title">Distribuição por categoria</h2>
+                        <p class="cs-tp-card__sub">Participação de cada causa no total arrecadado.</p>
+                    </div>
+                </div>
+
+                @if (_loading)
+                {
+                    <div class="cs-tp-donut-skeleton" aria-hidden="true"></div>
+                }
+                else if (_categorias.Count == 0)
+                {
+                    <p class="cs-tp-nodata">Sem arrecadação registrada para distribuir por categoria.</p>
+                }
+                else
+                {
+                    <div class="cs-tp-donut">
+                        <svg class="cs-tp-donut__svg" viewBox="0 0 200 200" role="img"
+                             aria-label="@($"Distribuição do total arrecadado entre {_categorias.Count} categorias")">
+                            <g transform="rotate(-90 100 100)">
+                                @foreach (var f in _fatias)
+                                {
+                                    <circle class="cs-tp-donut__arc @(_fatiaAtiva == f.Indice ? "is-active" : "")"
+                                            cx="100" cy="100" r="@Css(DonutR)"
+                                            fill="none"
+                                            stroke="@f.Cor"
+                                            stroke-width="26"
+                                            stroke-dasharray="@Css(f.Traco) @Css(DonutC - f.Traco)"
+                                            stroke-dashoffset="@Css(-f.Deslocamento)" />
+                                }
+                            </g>
+                            @* Centro: total, ou a fatia sob o cursor. *@
+                            <text class="cs-tp-donut__cap" x="100" y="92" text-anchor="middle">
+                                @(_fatiaAtiva is null ? "Total" : _categorias[_fatiaAtiva.Value].Rotulo)
+                            </text>
+                            <text class="cs-tp-donut__num" x="100" y="112" text-anchor="middle">
+                                @(_fatiaAtiva is null ? Compacto(_totalArrecadado) : Compacto(_categorias[_fatiaAtiva.Value].Valor))
+                            </text>
+                        </svg>
+
+                        @* Legenda = canal de identidade e alívio de contraste: todo valor está escrito. *@
+                        <ul class="cs-tp-legend">
+                            @foreach (var c in _categorias)
+                            {
+                                <li class="cs-tp-legend__item @(_fatiaAtiva == c.Indice ? "is-active" : "")"
+                                    @onmouseenter="() => _fatiaAtiva = c.Indice"
+                                    @onmouseleave="() => _fatiaAtiva = null"
+                                    @key="c.Rotulo">
+                                    <span class="cs-tp-legend__dot" style="background:@c.Cor"></span>
+                                    <span class="cs-tp-legend__name">@c.Rotulo</span>
+                                    <span class="cs-tp-legend__val">
+                                        @Money(c.Valor)
+                                        <small>@c.Percentual.ToString("0.#", Ptbr)%</small>
+                                    </span>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </section>
+
+            @* ---------------- Top campanhas ---------------- *@
+            <section class="cs-tp-card" aria-labelledby="tp-top">
+                <div class="cs-tp-card__head">
+                    <div>
+                        <h2 id="tp-top" class="cs-tp-card__title">Top campanhas por arrecadação</h2>
+                        <p class="cs-tp-card__sub">As campanhas ativas que mais receberam apoio.</p>
+                    </div>
+                </div>
+
+                @if (_loading)
+                {
+                    <div class="cs-tp-top-skeleton" aria-hidden="true"></div>
+                }
+                else if (_top.Count == 0)
+                {
+                    <p class="cs-tp-nodata">Nenhuma campanha ativa com arrecadação até o momento.</p>
+                }
+                else
+                {
+                    <ol class="cs-tp-top">
+                        @foreach (var (c, i) in _top.Select((c, i) => (c, i)))
+                        {
+                            <li class="cs-tp-top__item" @key="c.Id">
+                                <span class="cs-tp-top__rank">@(i + 1)</span>
+                                <a class="cs-tp-top__body" href="@($"/campanhas/{c.Id}")">
+                                    <span class="cs-tp-top__head">
+                                        <strong class="cs-tp-top__name">@c.Titulo</strong>
+                                        <span class="cs-tp-top__value">@Money(c.ValorTotalArrecadado)</span>
+                                    </span>
+                                    <span class="cs-tp-top__meta">
+                                        <span class="cs-tp-chip cs-tp-chip--@CategoriaCor(c.Categoria)">
+                                            @CampaignVisuals.RotuloCategoria(c.Categoria)
+                                        </span>
+                                        <span class="cs-tp-meter">
+                                            <span class="cs-tp-meter__fill" style="width:@Css(Percent(c))%"></span>
+                                        </span>
+                                        <span class="cs-tp-top__pct">@PercentLabel(c)</span>
+                                    </span>
+                                </a>
+                            </li>
+                        }
+                    </ol>
+                }
+            </section>
+        </div>
+
+        @* ---------------- Detalhamento por campanha ---------------- *@
+        <section class="cs-tp-card cs-tp-card--table" aria-labelledby="tp-tabela">
+            <div class="cs-tp-card__head cs-tp-card__head--stack">
+                <div>
+                    <h2 id="tp-tabela" class="cs-tp-card__title">Transparência por campanha</h2>
+                    <p class="cs-tp-card__sub">Detalhamento das campanhas e sua execução financeira.</p>
+                </div>
+            </div>
+
+            @* Uma única linha de filtros, acima de tudo que ela recorta. Fonte da verdade = URL. *@
+            <form class="cs-tp-toolbar" @onsubmit="AplicarBusca" @onsubmit:preventDefault>
+                <label class="cs-tp-search">
+                    <span class="cs-tp-search__icon"><MudIcon Icon="@Icons.Material.Rounded.Search" /></span>
+                    <input type="search"
+                           placeholder="Buscar campanha — tolera erros de digitação"
+                           value="@_q"
+                           @oninput="@(e => _q = e.Value?.ToString() ?? string.Empty)"
+                           aria-label="Buscar campanhas" />
+                    <button type="submit" class="cs-tp-search__submit">Buscar</button>
+                </label>
 
                 <label class="cs-tp-select">
-                    <span class="cs-tp-select__prefix">Categoria</span>
+                    <MudIcon Icon="@Icons.Material.Rounded.Category" Size="Size.Small" />
                     <select @onchange="OnCategoriaChanged" aria-label="Filtrar por categoria">
                         <option value="Todas" selected="@(_categoria == "Todas")">Todas as categorias</option>
                         @foreach (var (value, label) in CampaignVisuals.Categorias)
@@ -104,138 +295,149 @@
                             <option value="@value" selected="@(string.Equals(_categoria, value, StringComparison.OrdinalIgnoreCase))">@label</option>
                         }
                     </select>
-                    <MudIcon Icon="@Icons.Material.Filled.ExpandMore" Size="Size.Small" />
                 </label>
 
                 <label class="cs-tp-select">
-                    <span class="cs-tp-select__prefix">Ordenação</span>
+                    <MudIcon Icon="@Icons.Material.Rounded.SwapVert" Size="Size.Small" />
                     <select @onchange="OnOrdenarChanged" aria-label="Ordenar campanhas">
                         @foreach (var (value, label) in Ordenacoes)
                         {
                             <option value="@value" selected="@(string.Equals(_ordenar, value, StringComparison.OrdinalIgnoreCase))">@label</option>
                         }
                     </select>
-                    <MudIcon Icon="@Icons.Material.Filled.ExpandMore" Size="Size.Small" />
                 </label>
 
                 @if (TemFiltroAtivo)
                 {
-                    <button type="button" class="cs-tp-filtros" @onclick="LimparFiltros">
-                        <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" />
-                        Limpar filtros
+                    <button type="button" class="cs-tp-clear" @onclick="LimparFiltros">
+                        <MudIcon Icon="@Icons.Material.Rounded.Close" Size="Size.Small" />
+                        Limpar
                     </button>
                 }
-            </div>
-        </form>
+            </form>
 
-        @* -------- Estados -------- *@
-        @if (_loading)
-        {
-            <LoadingSkeleton Count="4" />
-        }
-        else if (_error)
-        {
-            <EmptyState Icon="@Icons.Material.Filled.CloudOff"
-                        Title="Nao foi possivel carregar os dados"
-                        Description="Ocorreu um erro ao consultar a API. Tente novamente em instantes.">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                           StartIcon="@Icons.Material.Filled.Refresh" OnClick="Recarregar">
-                    Tentar novamente
-                </MudButton>
-            </EmptyState>
-        }
-        else if (_view.Count == 0)
-        {
-            <EmptyState Icon="@Icons.Material.Filled.SearchOff"
-                        Title="Nenhuma campanha encontrada"
-                        Description="@(TemFiltroAtivo
-                            ? "Ajuste os filtros para ver mais campanhas ativas."
-                            : "Quando houver campanhas ativas, elas aparecerao aqui.")" />
-        }
-        else
-        {
-            <div class="cs-tp-results-head">
-                <div>
-                    <span class="cs-tp-results-head__eyebrow">Prestação de contas</span>
-                    <h2>Campanhas ativas</h2>
+            @if (_loading)
+            {
+                <LoadingSkeleton Count="4" />
+            }
+            else if (_view.Count == 0)
+            {
+                <EmptyState Icon="@Icons.Material.Rounded.SearchOff"
+                            Title="Nenhuma campanha encontrada"
+                            Description="@(TemFiltroAtivo
+                                ? "Ajuste os filtros para ver mais campanhas ativas."
+                                : "Quando houver campanhas ativas, elas aparecerão aqui.")" />
+            }
+            else
+            {
+                <div class="cs-tp-table-wrap">
+                    <table class="cs-tp-table">
+                        <caption class="cs-tp-sr">
+                            Campanhas ativas com meta, valor arrecadado, progresso, doações processadas e status.
+                        </caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">Campanha</th>
+                                <th scope="col">Categoria</th>
+                                <th scope="col" class="cs-tp-num">Meta</th>
+                                <th scope="col" class="cs-tp-num">Arrecadado</th>
+                                <th scope="col">Progresso</th>
+                                <th scope="col" class="cs-tp-num">Doações</th>
+                                <th scope="col">Status</th>
+                                <th scope="col"><span class="cs-tp-sr">Ações</span></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var c in _view)
+                            {
+                                var s = Stat(c.Id);
+                                <tr @key="c.Id">
+                                    <td data-label="Campanha">
+                                        <span class="cs-tp-cell-campaign">
+                                            <img class="cs-tp-thumb" src="@CampaignVisuals.ImagemDe(c.Id, c.Imagem)" alt="" loading="lazy" />
+                                            <span class="cs-tp-cell-campaign__text">
+                                                <strong>@c.Titulo</strong>
+                                                <small>@Resumo(c.Descricao)</small>
+                                            </span>
+                                        </span>
+                                    </td>
+                                    <td data-label="Categoria">
+                                        <span class="cs-tp-chip cs-tp-chip--@CategoriaCor(c.Categoria)">
+                                            @CampaignVisuals.RotuloCategoria(c.Categoria)
+                                        </span>
+                                    </td>
+                                    <td data-label="Meta" class="cs-tp-num">@Money(c.MetaFinanceira)</td>
+                                    <td data-label="Arrecadado" class="cs-tp-num cs-tp-num--strong">@Money(c.ValorTotalArrecadado)</td>
+                                    <td data-label="Progresso">
+                                        <span class="cs-tp-cell-progress">
+                                            <span class="cs-tp-meter">
+                                                <span class="cs-tp-meter__fill" style="width:@Css(Percent(c))%"></span>
+                                            </span>
+                                            <span class="cs-tp-cell-progress__pct">@PercentLabel(c)</span>
+                                        </span>
+                                    </td>
+                                    <td data-label="Doações" class="cs-tp-num">
+                                        @((s?.DoacoesProcessadas ?? c.TotalDoadores).ToString("N0", Ptbr))
+                                    </td>
+                                    <td data-label="Status">
+                                        <span class="cs-tp-cell-status">
+                                            <span class="cs-tp-status">
+                                                <span class="cs-tp-dot"></span> Ativa
+                                            </span>
+                                            <small>
+                                                @(s is null
+                                                    ? "sem leitura do worker"
+                                                    : $"atualizado {s.AtualizadoEm.ToLocalTime().ToString("dd/MM HH:mm", Ptbr)}")
+                                            </small>
+                                        </span>
+                                    </td>
+                                    <td data-label="" class="cs-tp-actions">
+                                        <a href="@($"/campanhas/{c.Id}")">Detalhes</a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
                 </div>
-                <span class="cs-tp-results-head__count">@_view.Count resultado@(_view.Count == 1 ? "" : "s")</span>
+
+                <p class="cs-tp-count">
+                    Mostrando @_view.Count de @_totalAtivas campanha@(_totalAtivas == 1 ? "" : "s") ativa@(_totalAtivas == 1 ? "" : "s")
+                </p>
+            }
+        </section>
+    }
+
+    @* ---------------- Compromisso ---------------- *@
+    <section class="cs-tp-trust" aria-label="Nosso compromisso">
+        <article>
+            <span class="cs-tp-trust__ico"><MudIcon Icon="@Icons.Material.Rounded.Shield" Size="Size.Small" /></span>
+            <div>
+                <strong>Segurança</strong>
+                <span>Suas doações são protegidas com tecnologia de ponta e os mais altos padrões de segurança de dados.</span>
             </div>
-
-            <div class="cs-tp-campaign-grid">
-                @foreach (var c in _view)
-                {
-                    <a class="cs-tp-campaign" href="@($"/campanhas/{c.Id}")" @key="c.Id">
-                        <span class="cs-tp-campaign__top">
-                            <img class="cs-tp-thumb" src="@CampaignVisuals.ImagemDe(c.Id, c.Imagem)" alt="" loading="lazy" />
-                            <span class="cs-tp-campaign__identity">
-                                <span class="cs-tp-chip cs-tp-chip--@CategoriaCor(c.Categoria)">@CampaignVisuals.RotuloCategoria(c.Categoria)</span>
-                                <strong>@c.Titulo</strong>
-                            </span>
-                        </span>
-
-                        <span class="cs-tp-campaign__values">
-                            <span><small>Arrecadado</small><strong>@Money(c.ValorTotalArrecadado)</strong></span>
-                            <span><small>Meta</small><strong>@Money(c.MetaFinanceira)</strong></span>
-                        </span>
-
-                        <span class="cs-tp-progress">
-                            <span class="cs-tp-progress__track">
-                                <span class="cs-tp-progress__fill" style="width:@PercentCss(c);"></span>
-                            </span>
-                            <span class="cs-tp-progress__pct">@PercentLabel(c)</span>
-                        </span>
-                    </a>
-                }
+        </article>
+        <article>
+            <span class="cs-tp-trust__ico"><MudIcon Icon="@Icons.Material.Rounded.Link" Size="Size.Small" /></span>
+            <div>
+                <strong>Rastreabilidade</strong>
+                <span>Cada doação é rastreável do início ao fim. Acompanhe a aplicação dos recursos em tempo real.</span>
             </div>
-
-            <p class="cs-tp-count">
-                Mostrando @_view.Count de @_totalAtivas campanha@(_totalAtivas == 1 ? "" : "s") ativa@(_totalAtivas == 1 ? "" : "s")
-            </p>
-        }
+        </article>
+        <article>
+            <span class="cs-tp-trust__ico"><MudIcon Icon="@Icons.Material.Rounded.Description" Size="Size.Small" /></span>
+            <div>
+                <strong>Prestação de contas</strong>
+                <span>Relatórios atualizados, dados auditáveis e transparência total em todas as etapas.</span>
+            </div>
+        </article>
+        <article>
+            <span class="cs-tp-trust__ico"><MudIcon Icon="@Icons.Material.Rounded.Groups" Size="Size.Small" /></span>
+            <div>
+                <strong>Nosso compromisso</strong>
+                <span>100% do valor doado vai para as campanhas. Sem taxas ocultas. Sem intermediários.</span>
+            </div>
+        </article>
     </section>
-
-    @* -------- Barra lateral de confianca -------- *@
-    <aside class="cs-tp-side" aria-label="Nosso compromisso">
-        <div class="cs-tp-side__head">
-            <span class="cs-tp-side__badge">
-                <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" />
-            </span>
-            <h2 class="cs-tp-side__title">Transparência que gera confiança</h2>
-        </div>
-        <p class="cs-tp-side__lead">
-            Nosso compromisso é com a verdade, a clareza e o impacto positivo na vida das pessoas.
-        </p>
-
-        <ul class="cs-tp-side__list">
-            <li>
-                <span class="cs-tp-side__ico"><MudIcon Icon="@Icons.Material.Filled.TrendingUp" Size="Size.Small" /></span>
-                <div>
-                    <strong>Atualizações em tempo real</strong>
-                    <span>Os valores arrecadados são atualizados continuamente.</span>
-                </div>
-            </li>
-            <li>
-                <span class="cs-tp-side__ico"><MudIcon Icon="@Icons.Material.Filled.Favorite" Size="Size.Small" /></span>
-                <div>
-                    <strong>Recursos com propósito</strong>
-                    <span>Cada doação é destinada a campanhas ativas e verificadas.</span>
-                </div>
-            </li>
-            <li>
-                <span class="cs-tp-side__ico"><MudIcon Icon="@Icons.Material.Filled.Groups" Size="Size.Small" /></span>
-                <div>
-                    <strong>Impacto que transforma</strong>
-                    <span>Acompanhe resultados que mostram o poder da solidariedade.</span>
-                </div>
-            </li>
-        </ul>
-
-        <blockquote class="cs-tp-side__quote">
-            <MudIcon Icon="@Icons.Material.Filled.FormatQuote" Size="Size.Small" />
-            A transparência não é apenas um valor, é o que nos conecta a você.
-        </blockquote>
-    </aside>
 </div>
 
 @code {
@@ -263,24 +465,69 @@
     private bool _loading = true;
     private bool _error;
 
-    // _ativas: TODAS as campanhas ativas — alimenta os indicadores do topo, que sao globais
+    // _ativas: TODAS as campanhas ativas — alimenta os indicadores e os graficos, que sao globais
     // (nao reagem a busca). _resultados: o conjunto que a busca devolveu (ou _ativas, sem termo);
     // e sobre ele que categoria/ordenacao sao aplicadas para produzir _view.
     private IReadOnlyList<CampanhaDto> _ativas = Array.Empty<CampanhaDto>();
     private IReadOnlyList<CampanhaDto> _resultados = Array.Empty<CampanhaDto>();
     private IReadOnlyList<CampanhaDto> _view = Array.Empty<CampanhaDto>();
 
-    // Termo ja consultado no servidor. Evita refazer a busca quando so categoria/ordenacao mudam
-    // (esses dois continuam sendo filtros locais, baratos, sobre o resultado ja carregado).
+    // Read model do Donations.Worker, indexado por campanha: traz doacoes processadas e a hora
+    // da ultima atualizacao — numeros que a listagem de campanhas nao carrega.
+    private Dictionary<Guid, CampanhaStatsDto> _stats = new();
+
+    // Termo ja consultado no servidor. Evita refazer a busca quando so categoria/ordenacao mudam.
     private string? _termoCarregado;
 
     private int _totalAtivas;
     private int _totalCampanhas;
     private decimal _totalArrecadado;
     private int _totalDoadores;
+    private long _doacoesProcessadas;
+    private DateTimeOffset? _atualizadoEm;
+
+    // ----- Series dos graficos -----
+    // Serie mensal: vem pronta da API (GET /api/campanhas/arrecadacao-mensal), que soma as doacoes
+    // PROCESSADAS por competencia. Nao da para derivar isso das campanhas — elas so guardam o
+    // acumulado atual, sem historico.
+    private IReadOnlyList<ArrecadacaoMensalDto> _serieMensal = Array.Empty<ArrecadacaoMensalDto>();
+    private IReadOnlyList<MesPonto> _meses = Array.Empty<MesPonto>();
+    private decimal[] _ticks = Array.Empty<decimal>();
+    private decimal _escalaMax;
+    private decimal _picoValor;
+
+    private IReadOnlyList<FatiaCategoria> _categorias = Array.Empty<FatiaCategoria>();
+    private IReadOnlyList<Arco> _fatias = Array.Empty<Arco>();
+    private int? _fatiaAtiva;
+
+    private IReadOnlyList<CampanhaDto> _top = Array.Empty<CampanhaDto>();
+
+    private sealed record MesPonto(string Chave, string Rotulo, string RotuloLongo, decimal Valor, long Doacoes);
+    private sealed record FatiaCategoria(int Indice, string Rotulo, decimal Valor, double Percentual, string Cor);
+    private sealed record Arco(int Indice, string Cor, double Traco, double Deslocamento);
+
+    // Geometria da rosca. O raio e a espessura vivem aqui porque o comprimento do arco de cada
+    // fatia (e o vao de 2px entre elas) e calculado em C#, nao no CSS.
+    /// <summary>Tamanho da janela da serie mensal. Casa com o subtitulo do cartao.</summary>
+    private const int MesesDaSerie = 12;
+
+    private const double DonutR = 74d;
+    private const double DonutC = 2d * Math.PI * DonutR;
+    private const double DonutGap = 3d;
+
+    // Paleta categorica validada para a rosca (scripts/validate_palette.js, --pairs all, superficie
+    // branca): azul da marca + verde + magenta + amarelo passam todas as checagens, inclusive o piso
+    // de visao normal. O quinto slot faria o par laranja/amarelo cair para ΔE 13,7 — abaixo do piso —
+    // entao a cauda e dobrada em "Outras" (cinza neutro), que e o remedio prescrito, e a legenda
+    // rotula tudo diretamente (exigido: magenta e amarelo ficam abaixo de 3:1 na superficie clara).
+    private static readonly string[] PaletaCategorias = { "#2563eb", "#008300", "#e87ba4", "#eda100" };
+    private const string CorOutras = "#9a9a94";
+    private const int MaxFatias = 4;
 
     private bool TemFiltroAtivo =>
         !string.IsNullOrWhiteSpace(_q) || _categoria != "Todas" || _ordenar != "recentes";
+
+    private CampanhaStatsDto? Stat(Guid id) => _stats.TryGetValue(id, out var s) ? s : null;
 
     // Roda no primeiro render e sempre que a query string muda: re-sincroniza os controles com a
     // rota. Se o TERMO mudou, refaz a busca no servidor (e la que mora o fuzzy do Elasticsearch);
@@ -314,7 +561,7 @@
 
         try
         {
-            // 1) Leitura sem termo: alimenta os indicadores do topo, que sao GLOBAIS. O total da
+            // 1) Leitura sem termo: alimenta indicadores e graficos, que sao GLOBAIS. O total da
             //    plataforma conta campanhas de qualquer status, por isso esta chamada NAO usa
             //    apenasAtivas; o recorte de ativas para os demais numeros e feito logo abaixo.
             var pagina = await Api.BuscarCampanhasAsync(null, 1, 100);
@@ -325,7 +572,27 @@
             _totalArrecadado = _ativas.Sum(c => c.ValorTotalArrecadado);
             _totalDoadores = _ativas.Sum(c => c.TotalDoadores);
 
-            // 2) Com termo, a lista exibida vem da busca do servidor (Elasticsearch com tolerancia
+            // 2) Agregados secundarios (read model por campanha + serie mensal). Sao independentes
+            //    entre si e da listagem: se um falhar, a pagina ainda vale, entao o erro nao
+            //    derruba o carregamento — o cartao correspondente e que cai para o estado vazio.
+            //    As duas leituras vao em paralelo por serem chamadas HTTP sem dependencia mutua.
+            var statsTask = CarregarStatsAsync();
+            var serieTask = CarregarSerieMensalAsync();
+            await Task.WhenAll(statsTask, serieTask);
+
+            _stats = statsTask.Result;
+            _serieMensal = serieTask.Result;
+
+            var ativasIds = _ativas.Select(c => c.Id).ToHashSet();
+            var statsAtivas = _stats.Where(kv => ativasIds.Contains(kv.Key)).Select(kv => kv.Value).ToList();
+            _doacoesProcessadas = statsAtivas.Count > 0
+                ? statsAtivas.Sum(s => s.DoacoesProcessadas)
+                : _totalDoadores;
+            _atualizadoEm = statsAtivas.Count > 0 ? statsAtivas.Max(s => s.AtualizadoEm) : null;
+
+            MontarSeries();
+
+            // 3) Com termo, a lista exibida vem da busca do servidor (Elasticsearch com tolerancia
             //    a erro de digitacao e acento; PostgreSQL como fallback). apenasAtivas garante que
             //    a vitrine nunca mostre campanha encerrada ou cancelada — inclusive no fallback.
             _resultados = string.IsNullOrWhiteSpace(termo)
@@ -341,6 +608,11 @@
             _ativas = Array.Empty<CampanhaDto>();
             _resultados = Array.Empty<CampanhaDto>();
             _view = Array.Empty<CampanhaDto>();
+            _serieMensal = Array.Empty<ArrecadacaoMensalDto>();
+            _meses = Array.Empty<MesPonto>();
+            _categorias = Array.Empty<FatiaCategoria>();
+            _fatias = Array.Empty<Arco>();
+            _top = Array.Empty<CampanhaDto>();
             // Nao marca o termo como carregado: uma nova tentativa deve refazer a busca.
             _termoCarregado = null;
         }
@@ -351,9 +623,148 @@
         }
     }
 
+    // Leituras auxiliares isoladas: cada uma engole a propria falha e devolve vazio, para um
+    // agregado indisponivel nao derrubar a pagina inteira.
+    private async Task<Dictionary<Guid, CampanhaStatsDto>> CarregarStatsAsync()
+    {
+        try
+        {
+            var stats = await Api.StatsCampanhasAsync();
+            // Agrupa antes do dicionario: campaign_stats tem o CampaignId como chave primaria, mas
+            // um duplicado inesperado derrubaria a pagina com um throw de chave repetida.
+            return stats.GroupBy(s => s.CampaignId)
+                        .ToDictionary(g => g.Key, g => g.OrderByDescending(s => s.AtualizadoEm).First());
+        }
+        catch
+        {
+            return new Dictionary<Guid, CampanhaStatsDto>();
+        }
+    }
+
+    private async Task<IReadOnlyList<ArrecadacaoMensalDto>> CarregarSerieMensalAsync()
+    {
+        try
+        {
+            return await Api.ArrecadacaoMensalAsync(MesesDaSerie);
+        }
+        catch
+        {
+            return Array.Empty<ArrecadacaoMensalDto>();
+        }
+    }
+
+    // Monta as series dos graficos. A mensal vem do servidor; distribuicao e top sao recortes das
+    // campanhas ativas ja carregadas.
+    private void MontarSeries()
+    {
+        MontarMeses();
+        MontarCategorias();
+        _top = _ativas.Where(c => c.ValorTotalArrecadado > 0)
+                      .OrderByDescending(c => c.ValorTotalArrecadado)
+                      .Take(5)
+                      .ToList();
+    }
+
+    private void MontarMeses()
+    {
+        // A serie ja vem pronta do servidor: janela completa, meses vazios zerados e competencia
+        // resolvida no fuso de referencia. Aqui so traduzimos (Ano, Mes) para os rotulos do eixo.
+        if (_serieMensal.Count == 0)
+        {
+            _meses = Array.Empty<MesPonto>();
+            _ticks = Array.Empty<decimal>();
+            _escalaMax = 0;
+            _picoValor = 0;
+            return;
+        }
+
+        var pontos = _serieMensal
+            .OrderBy(p => p.Ano).ThenBy(p => p.Mes)
+            .Select(p =>
+            {
+                var competencia = new DateTime(p.Ano, p.Mes, 1);
+                return new MesPonto(
+                    Chave: competencia.ToString("yyyy-MM", CultureInfo.InvariantCulture),
+                    Rotulo: competencia.ToString("MMM/yy", Ptbr).Replace(".", string.Empty),
+                    RotuloLongo: Capitalizar(competencia.ToString("MMMM 'de' yyyy", Ptbr)),
+                    Valor: p.Total,
+                    Doacoes: p.Doacoes);
+            })
+            .ToList();
+
+        _meses = pontos;
+        _picoValor = pontos.Max(p => p.Valor);
+
+        // Eixo por PASSO redondo (100k, 250k...) e nao por fracao do maior valor: fracoes de um
+        // teto "limpo" ainda produzem rotulos quebrados (R$ 62,5k). O topo da escala e o primeiro
+        // multiplo do passo que cobre o pico; o zero e a propria linha de base.
+        if (_picoValor <= 0m)
+        {
+            _escalaMax = 0m;
+            _ticks = Array.Empty<decimal>();
+            return;
+        }
+
+        var passo = PassoRedondo(_picoValor / 4m);
+        var linhas = Math.Max(1, (int)Math.Ceiling(_picoValor / passo));
+        _escalaMax = passo * linhas;
+        _ticks = Enumerable.Range(1, linhas).Select(i => passo * i).ToArray();
+    }
+
+    private void MontarCategorias()
+    {
+        var comValor = _ativas.Where(c => c.ValorTotalArrecadado > 0).ToList();
+        var total = comValor.Sum(c => c.ValorTotalArrecadado);
+
+        if (total <= 0)
+        {
+            _categorias = Array.Empty<FatiaCategoria>();
+            _fatias = Array.Empty<Arco>();
+            return;
+        }
+
+        var agrupadas = comValor
+            .GroupBy(c => CampaignVisuals.RotuloCategoria(c.Categoria))
+            .Select(g => (Rotulo: g.Key, Valor: g.Sum(c => c.ValorTotalArrecadado)))
+            .OrderByDescending(x => x.Valor)
+            .ToList();
+
+        var itens = new List<FatiaCategoria>();
+        foreach (var (rotulo, valor) in agrupadas.Take(MaxFatias))
+        {
+            itens.Add(new FatiaCategoria(
+                itens.Count, rotulo, valor, (double)(valor / total) * 100d, PaletaCategorias[itens.Count]));
+        }
+
+        // A cauda vira uma fatia neutra: quatro e o teto que a paleta sustenta em "todos os pares".
+        var resto = agrupadas.Skip(MaxFatias).ToList();
+        if (resto.Count > 0)
+        {
+            var valor = resto.Sum(x => x.Valor);
+            itens.Add(new FatiaCategoria(
+                itens.Count, $"Outras ({resto.Count})", valor, (double)(valor / total) * 100d, CorOutras));
+        }
+
+        _categorias = itens;
+
+        // Arcos: cada fatia perde metade do vao em cada ponta, de modo que a superficie branca —
+        // e nao um contorno — seja o que separa as fatias vizinhas.
+        var arcos = new List<Arco>(itens.Count);
+        var acumulado = 0d;
+        foreach (var item in itens)
+        {
+            var bruto = item.Percentual / 100d * DonutC;
+            var traco = Math.Max(bruto - DonutGap, 0.5d);
+            arcos.Add(new Arco(item.Indice, item.Cor, traco, acumulado + DonutGap / 2d));
+            acumulado += bruto;
+        }
+
+        _fatias = arcos;
+    }
+
     // Categoria e ordenacao continuam locais (baratos, sem ida ao servidor). A BUSCA POR TERMO nao
-    // esta mais aqui: era um Contains simples, que exigia digitacao exata — "sao paulo" nao achava
-    // "São Paulo" e "metrica" nao achava "Metricas". Agora ela vem do Elasticsearch em _resultados.
+    // esta aqui: era um Contains simples, que exigia digitacao exata — "sao paulo" nao achava
+    // "São Paulo". Agora ela vem do Elasticsearch em _resultados.
     private void AplicarFiltrosLocais()
     {
         IEnumerable<CampanhaDto> query = _resultados;
@@ -416,12 +827,61 @@
         ? 0d
         : Math.Clamp((double)(c.ValorTotalArrecadado / c.MetaFinanceira) * 100d, 0d, 100d);
 
-    private static string PercentCss(CampanhaDto c) => Percent(c).ToString("0.#", CultureInfo.InvariantCulture) + "%";
     private static string PercentLabel(CampanhaDto c) => $"{Percent(c).ToString("0", Ptbr)}%";
 
-    private static string Money(decimal value) => value.ToString("C0", Ptbr);
+    private static string Money(decimal value) => value.ToString("C2", Ptbr);
 
-    // Cor do chip por categoria (classe CSS).
+    // Numeros que entram em atributos de estilo/SVG: sempre com ponto decimal, nunca pt-BR —
+    // uma virgula aqui quebraria silenciosamente o CSS e o path do grafico.
+    private static string Css(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
+
+    // Eixo e rotulo de pico: forma curta, para caber sem colidir com a coluna vizinha.
+    private static string Compacto(decimal value) => value switch
+    {
+        >= 1_000_000m => "R$ " + (value / 1_000_000m).ToString("0.#", Ptbr) + " mi",
+        >= 1_000m => "R$ " + (value / 1_000m).ToString("0.#", Ptbr) + "k",
+        _ => "R$ " + value.ToString("0", Ptbr),
+    };
+
+    // Arredonda um passo de eixo para a "escada" convencional (1, 2, 2.5, 5, 10 x potencia de 10),
+    // para os rotulos cairem em numeros que se leem de relance.
+    private static decimal PassoRedondo(decimal bruto)
+    {
+        if (bruto <= 0m)
+        {
+            return 1m;
+        }
+
+        var magnitude = (decimal)Math.Pow(10, Math.Floor(Math.Log10((double)bruto)));
+        var normalizado = bruto / magnitude;
+        var passo = normalizado switch
+        {
+            <= 1m => 1m,
+            <= 2m => 2m,
+            <= 2.5m => 2.5m,
+            <= 5m => 5m,
+            _ => 10m,
+        };
+
+        return passo * magnitude;
+    }
+
+    private static string Capitalizar(string texto) =>
+        string.IsNullOrEmpty(texto) ? texto : char.ToUpper(texto[0], Ptbr) + texto[1..];
+
+    private static string Resumo(string? descricao)
+    {
+        if (string.IsNullOrWhiteSpace(descricao))
+        {
+            return string.Empty;
+        }
+
+        var limpo = descricao.Trim();
+        return limpo.Length <= 68 ? limpo : limpo[..67] + "…";
+    }
+
+    // Cor do chip por categoria (classe CSS). Chips sao rotulos de UI, nao series do grafico:
+    // seguem a paleta de superficie suave da marca, e o texto ao lado carrega o significado.
     private static string CategoriaCor(string? categoria) => (categoria ?? "Outros").ToLowerInvariant() switch
     {
         "saude" => "purple",

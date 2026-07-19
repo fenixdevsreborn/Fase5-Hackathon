@@ -159,6 +159,8 @@ namespace ConexaoSolidaria.Shared.Persistence.Migrations
 
                     b.HasIndex("Status");
 
+                    b.HasIndex("Status", "ProcessadaEm");
+
                     b.ToTable("donations", (string)null);
                 });
 

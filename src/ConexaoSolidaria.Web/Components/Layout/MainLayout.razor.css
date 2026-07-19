@@ -15,6 +15,15 @@
     /* No topo da pagina o header e transparente (sem fundo/borda/sombra). Ao rolar, o
        site.js adiciona a classe --scrolled e o fundo branco aparece com transicao suave. */
     background: transparent;
+}
+
+.cs-site-header {
+    position: sticky;
+    top: 0;
+    z-index: 1200;
+    /* No topo da pagina o header e transparente (sem fundo/borda/sombra). Ao rolar, o
+       site.js adiciona a classe --scrolled e o fundo branco aparece com transicao suave. */
+    background: transparent;
     border-bottom: 1px solid transparent;
     box-shadow: none;
     transition: background .3s ease, border-color .3s ease, box-shadow .3s ease, backdrop-filter .3s ease;
@@ -26,6 +35,38 @@
     border-bottom-color: rgba(12, 37, 75, 0.06);
     box-shadow: 0 8px 32px rgba(18, 50, 91, 0.04);
     backdrop-filter: blur(18px);
+}
+
+/* Header transparente e elegante no Index (Landing) */
+.cs-site-header--index {
+    background: transparent;
+    border-bottom-color: transparent;
+    box-shadow: none;
+}
+
+.cs-site-header--index.cs-site-header--scrolled {
+    background: rgba(7, 27, 63, 0.65);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+}
+
+.cs-site-header--index .cs-brand img {
+    filter: brightness(0) invert(1) drop-shadow(0 2px 10px rgba(0, 0, 0, .45));
+}
+
+.cs-site-header--index .cs-profile-button,
+.cs-site-header--index .cs-menu-button {
+    border-color: rgba(246, 249, 255, .35);
+    background: rgba(255, 255, 255, .12);
+    color: #f6f9ff;
+    backdrop-filter: blur(6px);
+}
+
+.cs-site-header--index .cs-profile-button ::deep .mud-icon-root,
+.cs-site-header--index .cs-menu-button ::deep .mud-icon-root {
+    color: #f6f9ff;
 }
 
 .cs-site-header__inner {

@@ -4,16 +4,17 @@
     position: fixed;
     bottom: 96px;
     right: 24px;
-    width: min(390px, calc(100vw - 32px));
-    height: min(560px, calc(100vh - 150px));
+    width: min(420px, calc(100vw - 24px));
+    height: min(600px, calc(100vh - 130px));
     z-index: 1400;
     display: flex;
     flex-direction: column;
-    border-radius: 20px;
+    border-radius: 22px;
     overflow: hidden;
-    background: #fff;
-    box-shadow: 0 24px 70px rgba(9, 30, 66, 0.28);
-    border: 1px solid rgba(12, 37, 75, 0.06);
+    background: #071b3f;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(99, 164, 255, 0.25);
+    backdrop-filter: blur(16px);
     transform-origin: bottom right;
     animation: cs-assistant-pop .28s cubic-bezier(.22, 1, .36, 1) both;
 }
@@ -21,10 +22,11 @@
 .cs-assistant-panel__header {
     display: flex;
     align-items: center;
-    gap: 11px;
-    padding: 13px 14px;
+    gap: 12px;
+    padding: 14px 18px;
     color: #fff;
-    background: linear-gradient(120deg, #0b5fd6, #2584ff 55%, #17a1c9);
+    background: linear-gradient(135deg, #071b3f, #0c2b5e);
+    border-bottom: 1px solid rgba(99, 164, 255, 0.2);
 }
 
 .cs-assistant-panel__avatar {

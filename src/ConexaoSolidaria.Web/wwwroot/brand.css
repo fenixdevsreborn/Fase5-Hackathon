@@ -90,6 +90,102 @@ h1:focus {
     text-decoration: underline;
 }
 
+/* =====================================================================================
+   Landing cinematográfica: header sobreposto à cena.
+   `html.cine-page` é aplicada pelo js/cinematic.js enquanto a cena está viva (e removida
+   no destroy). Aqui — e não no MainLayout.razor.css — porque CSS escopado do Blazor não
+   alcança o <html>. O header já nasce transparente no topo (MainLayout.razor.css); o que
+   falta é o conteúdo passar POR TRÁS dele e o texto virar claro sobre a cena escura.
+   ===================================================================================== */
+:root {
+    --cs-header-h: 78px;
+}
+
+/* Sem a faixa branca do shell atrás do header translúcido. */
+html.cine-page .cs-app-shell {
+    background: #071b3f;
+}
+
+/* O container da landing perde o respiro do topo: a cena encosta na viewport. */
+html.cine-page .cs-page-container {
+    padding-top: 0;
+}
+
+/* `cine-over-stage` vale enquanto a cena ocupa a tela — inclusive já rolado. Sem isso o
+   site.js ligaria o fundo branco aos 8px e cortaria a cena com uma faixa clara. */
+html.cine-over-stage .cs-site-header,
+html.cine-over-stage .cs-site-header--scrolled {
+    background: transparent;
+    border-bottom-color: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+}
+
+html.cine-over-stage .cs-site-header .cs-nav-link,
+html.cine-over-stage .cs-site-header .cs-account-link,
+.cs-site-header--index .cs-nav a {
+    color: #f6f9ff;
+    text-shadow: 0 1px 12px rgba(7, 27, 63, .85);
+}
+
+.cs-site-header--index .cs-nav a:hover {
+    color: #63a4ff;
+    background-color: rgba(255, 255, 255, .14);
+}
+
+.cs-site-header--index .cs-nav a.active {
+    color: #ffffff;
+    background: linear-gradient(135deg, #0875fa, #075de4);
+    box-shadow: 0 6px 18px rgba(8, 101, 235, .35);
+}
+
+.cs-site-header--index .cs-mobile-panel {
+    background: rgba(7, 27, 63, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 18px;
+    padding: 18px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+}
+
+html.cine-over-stage .cs-site-header .cs-profile-button,
+html.cine-over-stage .cs-site-header .cs-menu-button {
+    border-color: rgba(246, 249, 255, .38);
+    background: rgba(255, 255, 255, .12);
+    color: #f6f9ff;
+    backdrop-filter: blur(6px);
+}
+
+html.cine-over-stage .cs-site-header .cs-profile-button .mud-icon-root,
+html.cine-over-stage .cs-site-header .cs-menu-button .mud-icon-root {
+    color: #f6f9ff;
+}
+
+/* A logomarca é escura: sobre a cena noturna precisa de contraste. */
+html.cine-over-stage .cs-site-header .cs-brand img {
+    filter: brightness(0) invert(1) drop-shadow(0 2px 10px rgba(0, 0, 0, .45));
+}
+
+/* Véu sob o header: os clipes 4 e 5 são dourados e claros, e sem isto o texto branco do
+   menu some. Vai além da altura do header para o degradê não terminar num corte visível. */
+html.cine-over-stage .cs-site-header::before {
+    position: absolute;
+    z-index: -1;
+    top: 0;
+    right: 0;
+    left: 0;
+    height: 190%;
+    content: "";
+    background: linear-gradient(180deg, rgba(7, 27, 63, .82) 0%, rgba(7, 27, 63, .52) 45%, rgba(7, 27, 63, 0) 100%);
+    pointer-events: none;
+}
+
+/* Reforço local atrás dos itens de navegação, que caem sobre a parte mais clara do quadro. */
+html.cine-over-stage .cs-site-header .cs-nav-link {
+    text-shadow: 0 1px 12px rgba(7, 27, 63, .85);
+}
+
 /* Acessibilidade: respeitar prefers-reduced-motion. */
 @media (prefers-reduced-motion: reduce) {
     *,

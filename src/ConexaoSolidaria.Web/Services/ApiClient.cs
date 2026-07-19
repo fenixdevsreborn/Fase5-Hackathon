@@ -70,6 +70,17 @@ public sealed class ApiClient(HttpClient http, TokenProvider tokenProvider)
         await GetAsync<IReadOnlyList<CampanhaStatsDto>>("api/campanhas/stats", ct)
         ?? Array.Empty<CampanhaStatsDto>();
 
+    /// <summary>
+    /// Serie de arrecadacao dos ultimos <paramref name="meses"/> meses (doacoes processadas por
+    /// competencia). O servidor devolve a janela completa, com os meses vazios zerados — o
+    /// chamador nao precisa preencher lacunas nem decidir fuso.
+    /// </summary>
+    public async Task<IReadOnlyList<ArrecadacaoMensalDto>> ArrecadacaoMensalAsync(
+        int meses = 12,
+        CancellationToken ct = default) =>
+        await GetAsync<IReadOnlyList<ArrecadacaoMensalDto>>($"api/campanhas/arrecadacao-mensal?meses={meses}", ct)
+        ?? Array.Empty<ArrecadacaoMensalDto>();
+
     public Task<CampanhaDto?> CriarCampanhaAsync(SalvarCampanha dto, CancellationToken ct = default) =>
         PostAsync<CampanhaDto>("api/campanhas", dto, ct);
 

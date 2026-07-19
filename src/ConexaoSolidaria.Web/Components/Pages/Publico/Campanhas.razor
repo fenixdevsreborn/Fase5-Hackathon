@@ -10,7 +10,7 @@
     <header class="cs-page-header">
         <div class="cs-page-header__content">
             <span class="cs-page-header__badge">
-                <MudIcon Icon="@Icons.Material.Filled.Favorite" Size="Size.Small" />
+                <MudIcon Icon="@Icons.Material.Rounded.Favorite" Size="Size.Small" />
                 Faça parte dessa conexão
             </span>
             <h1 class="cs-page-header__title">Campanhas que <span>transformam vidas</span></h1>
@@ -22,15 +22,15 @@
     {
         <div class="campaign-stats" aria-label="Resumo das campanhas exibidas">
             <div class="campaign-stat">
-                <span class="campaign-stat__icon campaign-stat__icon--blue"><MudIcon Icon="@Icons.Material.Filled.Campaign" /></span>
+                <span class="campaign-stat__icon campaign-stat__icon--blue"><MudIcon Icon="@Icons.Material.Rounded.Campaign" /></span>
                 <span><small>Campanhas encontradas</small><strong>@_total</strong></span>
             </div>
             <div class="campaign-stat">
-                <span class="campaign-stat__icon campaign-stat__icon--orange"><MudIcon Icon="@Icons.Material.Filled.Paid" /></span>
+                <span class="campaign-stat__icon campaign-stat__icon--orange"><MudIcon Icon="@Icons.Material.Rounded.Payments" /></span>
                 <span><small>Arrecadado nesta página</small><strong>@Money(TotalArrecadado)</strong></span>
             </div>
             <div class="campaign-stat">
-                <span class="campaign-stat__icon campaign-stat__icon--blue"><MudIcon Icon="@Icons.Material.Filled.Groups" /></span>
+                <span class="campaign-stat__icon campaign-stat__icon--blue"><MudIcon Icon="@Icons.Material.Rounded.Group" /></span>
                 <span><small>Doadores nesta página</small><strong>@TotalDoadores.ToString("N0", Ptbr)</strong></span>
             </div>
         </div>
@@ -49,11 +49,11 @@
                          Clearable="true"
                          OnClearButtonClick="OnClear"
                          MaxItems="6"
-                         Placeholder="Busque por titulo, causa ou categoria..."
+                         Placeholder="Busque por título, causa ou categoria..."
                          Variant="Variant.Outlined"
                          Margin="Margin.Dense"
                          Adornment="Adornment.Start"
-                         AdornmentIcon="@Icons.Material.Filled.Search"
+                         AdornmentIcon="@Icons.Material.Rounded.Search"
                          Class="campaign-search__field">
             <ItemTemplate Context="sugestao">
                 <div class="campaign-suggestion">
@@ -63,19 +63,19 @@
                         <strong>@sugestao.Titulo</strong>
                         <small>@CampaignVisuals.RotuloCategoria(sugestao.Categoria) · @Money(sugestao.ValorTotalArrecadado) arrecadados</small>
                     </span>
-                    <MudIcon Icon="@Icons.Material.Filled.NorthEast" Size="Size.Small" Class="campaign-suggestion__go" />
+                    <MudIcon Icon="@Icons.Material.Rounded.NorthEast" Size="Size.Small" Class="campaign-suggestion__go" />
                 </div>
             </ItemTemplate>
             <NoItemsTemplate>
                 <div class="campaign-suggestion campaign-suggestion--empty">
-                    <MudIcon Icon="@Icons.Material.Filled.SearchOff" Size="Size.Small" />
-                    <span>Nenhuma sugestao — veja os resultados abaixo.</span>
+                    <MudIcon Icon="@Icons.Material.Rounded.SearchOff" Size="Size.Small" />
+                    <span>Nenhuma sugestão — veja os resultados abaixo.</span>
                 </div>
             </NoItemsTemplate>
         </MudAutocomplete>
         <span class="campaign-search__hint">
-            <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Size="Size.Small" />
-            Busca inteligente: tolera erros de digitacao e sugere enquanto voce escreve.
+            <MudIcon Icon="@Icons.Material.Rounded.AutoAwesome" Size="Size.Small" />
+            Busca inteligente: tolera erros de digitação e sugere enquanto você escreve.
         </span>
     </div>
 
